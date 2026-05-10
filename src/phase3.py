@@ -8,13 +8,14 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
+
+from .phase2 import build_feature_components, assemble_feature_dataset, load_phase1_filtered
 
 try:  # pragma: no cover - optional dependency
     from imblearn.over_sampling import SMOTE
@@ -33,18 +34,17 @@ except Exception:  # pragma: no cover
 
 
 TARGET_COLUMN = "negative_label"
-TIME_COLUMN = "last_timestamp"
 IGNORED_COLUMNS = {
     "source_subreddit",
     "target_subreddit",
     "first_timestamp",
     "last_timestamp",
     "negative_label",
-    "interaction_count",
-    "positive_count",
-    "negative_count",
-    "sentiment_balance",
-    "negative_ratio",
+    "future_positive_count",
+    "future_negative_count",
+    "future_interaction_count",
+    "future_start",
+    "future_end",
 }
 
 
@@ -57,32 +57,72 @@ class SplitData:
     test: pd.DataFrame
 
 
-def load_phase2_modeling_table(path: str | Path) -> pd.DataFrame:
-    """Load the phase 2 modeling table and parse timestamps."""
-    frame = pd.read_csv(path)
-    for column in ["first_timestamp", "last_timestamp"]:
-        if column in frame.columns:
-            frame[column] = pd.to_datetime(frame[column], errors="coerce")
-    return frame
+def load_phase1_interactions(path: str | Path) -> pd.DataFrame:
+    """Load cleaned interactions from phase 1 for strict temporal modeling."""
+    return load_phase1_filtered(path)
 
 
-def temporal_split_modeling_table(
-    frame: pd.DataFrame,
-    train_end: str = "2016-12-31 23:59:59",
-    validation_end: str = "2017-02-28 23:59:59",
-) -> SplitData:
-    """Split the modeling table by the last interaction timestamp."""
-    ordered = frame.sort_values(TIME_COLUMN).copy()
-    train_cutoff = pd.Timestamp(train_end)
-    validation_cutoff = pd.Timestamp(validation_end)
+def _aggregate_future_labels(frame: pd.DataFrame, future_start: pd.Timestamp, future_end: pd.Timestamp) -> pd.DataFrame:
+    """Build labels from a disjoint future window."""
+    future_frame = frame[(frame["timestamp"] > future_start) & (frame["timestamp"] <= future_end)].copy()
+    if future_frame.empty:
+        return pd.DataFrame(
+            columns=[
+                "source_subreddit",
+                "target_subreddit",
+                "future_positive_count",
+                "future_negative_count",
+                "future_interaction_count",
+                TARGET_COLUMN,
+                "future_start",
+                "future_end",
+            ]
+        )
 
-    train_frame = ordered[ordered[TIME_COLUMN] <= train_cutoff].copy()
-    validation_frame = ordered[(ordered[TIME_COLUMN] > train_cutoff) & (ordered[TIME_COLUMN] <= validation_cutoff)].copy()
-    test_frame = ordered[ordered[TIME_COLUMN] > validation_cutoff].copy()
+    grouped = future_frame.groupby(["source_subreddit", "target_subreddit"], dropna=False)["link_sentiment"]
+    labels = grouped.agg(
+        future_interaction_count="size",
+        future_positive_count=lambda values: int((values == 1).sum()),
+        future_negative_count=lambda values: int((values == -1).sum()),
+    ).reset_index()
+    labels[TARGET_COLUMN] = (labels["future_negative_count"] > labels["future_positive_count"]).astype(int)
+    labels["future_start"] = future_start
+    labels["future_end"] = future_end
+    return labels
+
+
+def _build_history_features(frame: pd.DataFrame, history_end: pd.Timestamp) -> pd.DataFrame:
+    """Compute feature table from interactions available up to history_end."""
+    history_frame = frame[frame["timestamp"] <= history_end].copy()
+    if history_frame.empty:
+        return pd.DataFrame(columns=["source_subreddit", "target_subreddit"])
+
+    _, node_features, edge_features, triadic_features = build_feature_components(history_frame)
+    feature_table = assemble_feature_dataset(node_features, edge_features, triadic_features)
+    if TARGET_COLUMN in feature_table.columns:
+        feature_table = feature_table.drop(columns=[TARGET_COLUMN])
+    return feature_table
+
+
+def build_strict_temporal_splits(frame: pd.DataFrame) -> SplitData:
+    """Create train/validation/test splits with strict history-label separation."""
+    windows = {
+        "train": (pd.Timestamp("2015-12-31 23:59:59"), pd.Timestamp("2016-06-30 23:59:59")),
+        "validation": (pd.Timestamp("2016-06-30 23:59:59"), pd.Timestamp("2016-12-31 23:59:59")),
+        "test": (pd.Timestamp("2016-12-31 23:59:59"), pd.Timestamp("2017-04-30 23:59:59")),
+    }
+
+    split_frames: dict[str, pd.DataFrame] = {}
+    for split_name, (history_end, label_end) in windows.items():
+        features = _build_history_features(frame, history_end)
+        labels = _aggregate_future_labels(frame, history_end, label_end)
+        merged = features.merge(labels, on=["source_subreddit", "target_subreddit"], how="inner")
+        split_frames[split_name] = merged.reset_index(drop=True)
+
     return SplitData(
-        train=train_frame.reset_index(drop=True),
-        validation=validation_frame.reset_index(drop=True),
-        test=test_frame.reset_index(drop=True),
+        train=split_frames["train"],
+        validation=split_frames["validation"],
+        test=split_frames["test"],
     )
 
 
@@ -92,9 +132,9 @@ def build_feature_matrix(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series, 
     cleaned = cleaned.dropna(subset=[TARGET_COLUMN])
     y = cleaned[TARGET_COLUMN].astype(int)
     feature_frame = cleaned.drop(columns=[column for column in IGNORED_COLUMNS if column in cleaned.columns])
-    feature_frame = feature_frame.select_dtypes(include=["number"]).copy()
+    feature_frame = feature_frame.select_dtypes(include=["number", "bool"]).copy()
     feature_frame = feature_frame.replace([np.inf, -np.inf], np.nan)
-    feature_frame = feature_frame.fillna(0)
+    feature_frame = feature_frame.fillna(0).astype("float64")
     feature_columns = list(feature_frame.columns)
     return feature_frame, y, feature_columns
 
@@ -186,8 +226,8 @@ def _fit_models(x_train: pd.DataFrame, y_train: pd.Series) -> dict[str, object]:
 
 
 def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, SplitData]:
-    """Run the full phase 3 pipeline and return metrics plus feature importances."""
-    splits = temporal_split_modeling_table(modeling_table)
+    """Run strict temporal phase 3 and return metrics plus feature importances."""
+    splits = build_strict_temporal_splits(modeling_table)
 
     x_train, y_train, feature_columns = build_feature_matrix(splits.train)
     x_validation, y_validation, _ = build_feature_matrix(splits.validation)

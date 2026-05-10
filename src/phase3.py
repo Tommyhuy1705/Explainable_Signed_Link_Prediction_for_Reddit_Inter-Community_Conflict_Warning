@@ -11,7 +11,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import average_precision_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, average_precision_score, f1_score, roc_auc_score
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -160,13 +160,14 @@ def _safe_probability_scores(model, x_frame: pd.DataFrame) -> np.ndarray:
 
 
 def _evaluate_model(model, x_frame: pd.DataFrame, y_true: pd.Series) -> dict[str, float]:
-    """Compute ROC-AUC, F1, and PR-AUC for a fitted model."""
+    """Compute ROC-AUC, F1, PR-AUC, and accuracy for a fitted model."""
     probabilities = _safe_probability_scores(model, x_frame)
     predictions = (probabilities >= 0.5).astype(int)
     metrics = {
         "roc_auc": roc_auc_score(y_true, probabilities) if y_true.nunique() > 1 else float("nan"),
         "f1": f1_score(y_true, predictions, zero_division=0),
         "pr_auc": average_precision_score(y_true, probabilities) if y_true.nunique() > 1 else float("nan"),
+        "accuracy": accuracy_score(y_true, predictions),
     }
     return metrics
 

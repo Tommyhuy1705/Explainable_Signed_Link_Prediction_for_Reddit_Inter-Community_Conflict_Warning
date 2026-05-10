@@ -247,9 +247,11 @@ def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.
                 "validation_roc_auc": validation_metrics["roc_auc"],
                 "validation_f1": validation_metrics["f1"],
                 "validation_pr_auc": validation_metrics["pr_auc"],
+                "validation_accuracy": validation_metrics["accuracy"],
                 "test_roc_auc": test_metrics["roc_auc"],
                 "test_f1": test_metrics["f1"],
                 "test_pr_auc": test_metrics["pr_auc"],
+                "test_accuracy": test_metrics["accuracy"],
             }
         )
 

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 import networkx as nx
+import numpy as np
 import pandas as pd
 
 
@@ -20,16 +21,24 @@ EDGE_COLUMNS = [
     "properties",
 ]
 
+OPTIONAL_EDGE_COLUMNS = ["dataset_source"]
+PROPERTY_FEATURE_COUNT = 86
+TEXT_FEATURE_PREFIX = "text_property_"
+
 
 def load_phase1_filtered(path: str | Path) -> pd.DataFrame:
     """Load the cleaned phase 1 dataset used for graph construction."""
-    frame = pd.read_csv(path, usecols=EDGE_COLUMNS)
+    header = pd.read_csv(path, nrows=0)
+    available_columns = [column for column in EDGE_COLUMNS + OPTIONAL_EDGE_COLUMNS if column in header.columns]
+    frame = pd.read_csv(path, usecols=available_columns)
     frame["timestamp"] = pd.to_datetime(frame["timestamp"], errors="coerce")
     frame["link_sentiment"] = pd.to_numeric(frame["link_sentiment"], errors="coerce").astype("Int64")
     frame["source_subreddit"] = frame["source_subreddit"].astype("string").str.strip().str.lower()
     frame["target_subreddit"] = frame["target_subreddit"].astype("string").str.strip().str.lower()
     frame["post_id"] = frame["post_id"].astype("string").str.strip()
     frame["properties"] = frame["properties"].astype("string")
+    if "dataset_source" in frame.columns:
+        frame["dataset_source"] = frame["dataset_source"].astype("string").str.strip().str.lower()
     return frame.dropna(subset=["source_subreddit", "target_subreddit", "timestamp", "link_sentiment"]).reset_index(drop=True)
 
 
@@ -63,6 +72,55 @@ def aggregate_edge_table(frame: pd.DataFrame) -> pd.DataFrame:
     return table
 
 
+def property_feature_names(prefix: str = TEXT_FEATURE_PREFIX) -> list[str]:
+    """Return stable column names for the 86 SNAP text-property features."""
+    return [f"{prefix}{index:02d}" for index in range(PROPERTY_FEATURE_COUNT)]
+
+
+def parse_property_matrix(properties: pd.Series, prefix: str = TEXT_FEATURE_PREFIX) -> pd.DataFrame:
+    """Parse the comma-separated SNAP text properties into numeric columns.
+
+    The raw dataset stores 86 precomputed text features as a comma-separated
+    string. Keeping these as numeric columns lets the report compare text-only,
+    graph-only, and hybrid models without reprocessing raw post text.
+    """
+    names = property_feature_names(prefix)
+    if properties.empty:
+        return pd.DataFrame(columns=names, index=properties.index)
+
+    rows = []
+    for value in properties.fillna("").astype(str):
+        parsed = np.fromstring(value, sep=",", dtype=np.float64)
+        if parsed.size != PROPERTY_FEATURE_COUNT:
+            fixed = np.full(PROPERTY_FEATURE_COUNT, np.nan, dtype=np.float64)
+            fixed[: min(parsed.size, PROPERTY_FEATURE_COUNT)] = parsed[:PROPERTY_FEATURE_COUNT]
+            parsed = fixed
+        rows.append(parsed)
+
+    return pd.DataFrame(np.vstack(rows), columns=names, index=properties.index)
+
+
+def build_text_feature_table(frame: pd.DataFrame) -> pd.DataFrame:
+    """Aggregate historical post text properties into pair-level features."""
+    base_columns = ["source_subreddit", "target_subreddit"]
+    if frame.empty:
+        return pd.DataFrame(columns=base_columns + ["text_feature_count"] + property_feature_names())
+
+    text_features = parse_property_matrix(frame["properties"])
+    feature_frame = pd.concat([frame[base_columns].reset_index(drop=True), text_features.reset_index(drop=True)], axis=1)
+    grouped = feature_frame.groupby(base_columns, dropna=False)
+    table = grouped[property_feature_names()].mean().reset_index()
+    table["text_feature_count"] = grouped.size().to_numpy()
+
+    if "dataset_source" in frame.columns:
+        source_dummies = pd.get_dummies(frame["dataset_source"].fillna("unknown"), prefix="link_location")
+        source_frame = pd.concat([frame[base_columns].reset_index(drop=True), source_dummies.reset_index(drop=True)], axis=1)
+        source_table = source_frame.groupby(base_columns, dropna=False).mean(numeric_only=True).reset_index()
+        table = table.merge(source_table, on=base_columns, how="left")
+
+    return table
+
+
 def build_node_feature_table(graph: nx.MultiDiGraph) -> pd.DataFrame:
     """Compute node-level structural features for the signed network."""
     simple_graph = nx.DiGraph()
@@ -77,7 +135,7 @@ def build_node_feature_table(graph: nx.MultiDiGraph) -> pd.DataFrame:
 
     pagerank_scores = nx.pagerank(simple_graph, alpha=0.85, weight="weight") if simple_graph.number_of_edges() else {}
     betweenness_scores = (
-        nx.betweenness_centrality(simple_graph, normalized=True, endpoints=False, k=min(256, simple_graph.number_of_nodes()))
+        nx.betweenness_centrality(simple_graph, normalized=True, endpoints=False, k=min(256, simple_graph.number_of_nodes()), seed=42)
         if simple_graph.number_of_nodes() > 1
         else {}
     )
@@ -182,23 +240,25 @@ def build_triadic_feature_table(frame: pd.DataFrame) -> pd.DataFrame:
 
 def build_feature_dataset(frame: pd.DataFrame) -> pd.DataFrame:
     """Merge node, edge, and triadic features into one modeling table."""
-    graph, node_features, edge_features, triadic_features = build_feature_components(frame)
-    return assemble_feature_dataset(node_features, edge_features, triadic_features)
+    graph, node_features, edge_features, triadic_features, text_features = build_feature_components(frame)
+    return assemble_feature_dataset(node_features, edge_features, triadic_features, text_features)
 
 
-def build_feature_components(frame: pd.DataFrame) -> tuple[nx.MultiDiGraph, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def build_feature_components(frame: pd.DataFrame) -> tuple[nx.MultiDiGraph, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build the reusable graph and feature tables for phase 2."""
     graph = build_signed_multidigraph(frame)
     node_features = build_node_feature_table(graph)
     edge_features = build_edge_feature_table(frame, graph)
     triadic_features = build_triadic_feature_table(frame)
-    return graph, node_features, edge_features, triadic_features
+    text_features = build_text_feature_table(frame)
+    return graph, node_features, edge_features, triadic_features, text_features
 
 
 def assemble_feature_dataset(
     node_features: pd.DataFrame,
     edge_features: pd.DataFrame,
     triadic_features: pd.DataFrame,
+    text_features: pd.DataFrame | None = None,
 ) -> pd.DataFrame:
     """Merge precomputed feature tables into the final modeling table."""
 
@@ -220,6 +280,8 @@ def assemble_feature_dataset(
         how="left",
     )
     merged = edge_features.merge(triadic_features, on=["source_subreddit", "target_subreddit"], how="left")
+    if text_features is not None and not text_features.empty:
+        merged = merged.merge(text_features, on=["source_subreddit", "target_subreddit"], how="left")
     merged["negative_label"] = (merged["negative_count"] > merged["positive_count"]).astype(int)
     merged = merged.fillna(0)
     return merged
@@ -229,17 +291,19 @@ def export_phase2_tables(frame: pd.DataFrame, output_dir: str | Path) -> dict[st
     """Export the phase 2 tables to CSV files."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    graph, node_features, edge_features, triadic_features = build_feature_components(frame)
-    modeling_table = assemble_feature_dataset(node_features, edge_features, triadic_features)
+    graph, node_features, edge_features, triadic_features, text_features = build_feature_components(frame)
+    modeling_table = assemble_feature_dataset(node_features, edge_features, triadic_features, text_features)
 
     paths = {
         "node_features": output_path / "phase2_node_features.csv",
         "edge_features": output_path / "phase2_edge_features.csv",
         "triadic_features": output_path / "phase2_triadic_features.csv",
+        "text_features": output_path / "phase2_text_features.csv",
         "modeling_table": output_path / "phase2_modeling_table.csv",
     }
     node_features.to_csv(paths["node_features"], index=False)
     edge_features.to_csv(paths["edge_features"], index=False)
     triadic_features.to_csv(paths["triadic_features"], index=False)
+    text_features.to_csv(paths["text_features"], index=False)
     modeling_table.to_csv(paths["modeling_table"], index=False)
     return paths

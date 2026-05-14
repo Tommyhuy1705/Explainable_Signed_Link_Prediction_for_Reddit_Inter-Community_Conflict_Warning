@@ -1,22 +1,33 @@
-# Phase 3: Modeling & Evaluation
+# Phase 3: Modeling and Evaluation
 
 ## Checklist
-- [x] Huấn luyện baseline (Logistic Regression, Random Forest).
-- [x] Xử lý mất cân bằng lớp (SMOTE hoặc class weight).
-- [x] Huấn luyện mô hình nâng cao (XGBoost/LightGBM).
-- [x] Đánh giá bằng ROC-AUC, F1, PR-AUC.
-- [x] Phân tích feature importance / SHAP.
 
-## Deliverables
-- [x] Notebook `04_modeling_and_evaluation.ipynb`.
-- [x] `data/processed/phase3/phase3_model_metrics.csv`.
-- [x] `data/processed/phase3/phase3_feature_importance.csv`.
+- [x] Use strict history-label temporal separation.
+- [x] Train dummy and historical-ratio baselines.
+- [x] Train Logistic Regression, Random Forest, XGBoost, and LightGBM when dependencies are available.
+- [x] Compare graph-only, text-only, and hybrid feature sets.
+- [x] Handle class imbalance with class weights and optional SMOTE.
+- [x] Tune decision thresholds on validation data.
+- [x] Report PR-AUC, ROC-AUC, F1, Macro-F1, precision, recall, balanced accuracy, and confusion counts.
+- [x] Export feature-importance tables.
 
 ## Strict Anti-Leakage Protocol
-- Features chỉ được xây từ lịch sử trước mốc cutoff (`history_end`).
-- Nhãn được tạo từ cửa sổ tương lai rời nhau (`future_start` -> `future_end`).
-- Không dùng cột tạo nhãn tương lai trong feature matrix.
-- Split strict hiện tại:
-  - Train: history <= 2015-12-31, label window = 2016-01-01 đến 2016-06-30.
-  - Validation: history <= 2016-06-30, label window = 2016-07-01 đến 2016-12-31.
-  - Test: history <= 2016-12-31, label window = 2017-01-01 đến 2017-04-30.
+
+Features are computed only from interactions before a history cutoff. Labels are computed from a disjoint future window.
+
+| Split | History Window | Label Window |
+|---|---|---|
+| Train | <= 2015-12-31 | 2016-01-01 to 2016-06-30 |
+| Validation | <= 2016-06-30 | 2016-07-01 to 2016-12-31 |
+| Test | <= 2016-12-31 | 2017-01-01 to 2017-04-30 |
+
+## Deliverables
+
+- `notebooks/04_modeling_and_evaluation.ipynb`
+- `data/processed/phase3/phase3_model_metrics.csv`
+- `data/processed/phase3/phase3_feature_importance.csv`
+- Report figures in `reports/figures/`
+
+## Reporting Guidance
+
+Accuracy should not be the headline metric because negative interactions are rare. The main comparison should use PR-AUC and F1 for the negative class, with ROC-AUC as a supporting metric.

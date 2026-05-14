@@ -1,13 +1,24 @@
-# Phase 1: Initiation & Data Preparation
+# Phase 1: Data Preparation
 
 ## Checklist
-- [x] Tải và xác nhận hai tập dữ liệu body/title.
-- [x] Chuẩn hóa schema, kiểu dữ liệu, và xử lý missing values.
-- [x] Thực hiện EDA cơ bản (node, edge, tỷ lệ nhãn, khoảng thời gian).
-- [x] Áp dụng K-Core Filtering (ví dụ K=5).
-- [x] Thực hiện temporal split theo mốc thời gian đã thống nhất.
+
+- [x] Load and verify the two SNAP Reddit hyperlink files.
+- [x] Standardize schema and data types.
+- [x] Preserve `dataset_source` so title/body links can be compared.
+- [x] Remove missing core fields, self-loops, and exact duplicate interactions.
+- [x] Sort interactions by timestamp.
+- [x] Apply optional k-core filtering for a denser modeling graph.
+- [x] Create chronological train/validation/test data extracts for EDA.
 
 ## Deliverables
-- [x] Notebook `01_data_exploration.ipynb` chạy tuần tự từ load đến split.
-- [x] Dữ liệu sạch lưu vào `data/interim/` hoặc `data/processed/`.
-- [x] Báo cáo ngắn về thống kê phase 1 để đưa sang phase 2.
+
+- `notebooks/01_data_exploration.ipynb`
+- `data/interim/phase1_combined_clean.csv`
+- `data/processed/phase1_kcore_filtered.csv`
+- `data/processed/phase1_train.csv`
+- `data/processed/phase1_validation.csv`
+- `data/processed/phase1_test.csv`
+
+## Notes for the Report
+
+K-core filtering should be described as a practical course-project restriction to reduce sparsity. The stricter modeling protocol in Phase 3 still computes features only from historical windows.

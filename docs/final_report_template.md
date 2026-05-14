@@ -89,6 +89,9 @@ Graph/history features:
 - PageRank.
 - Betweenness.
 - Reciprocity.
+- Clustering coefficient.
+- Community size and community-level negative ratio.
+- Same-community flag and community negativity gap.
 
 Structural balance features:
 
@@ -123,6 +126,9 @@ Feature-set ablations:
 - Text-only.
 - Graph-only.
 - Hybrid.
+- History-only.
+- Graph without structural-balance features.
+- Hybrid without structural-balance features.
 
 ## 6. Experiments and Metrics
 
@@ -149,6 +155,7 @@ Include:
 - Model comparison table.
 - Ablation table.
 - PR-AUC bar chart.
+- Precision-recall and ROC curves.
 - Best-model confusion matrix.
 - Feature-importance plot.
 

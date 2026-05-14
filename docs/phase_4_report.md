@@ -17,6 +17,8 @@
 - Top negative target subreddits.
 - Directed degree distribution.
 - Model comparison by test PR-AUC.
+- Precision-recall curve.
+- ROC curve.
 - Best-model confusion matrix.
 - Top feature-importance plot.
 

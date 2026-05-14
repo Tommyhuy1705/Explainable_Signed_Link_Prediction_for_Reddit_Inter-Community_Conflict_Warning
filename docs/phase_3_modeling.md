@@ -6,6 +6,7 @@
 - [x] Train dummy and historical-ratio baselines.
 - [x] Train Logistic Regression, Random Forest, XGBoost, and LightGBM when dependencies are available.
 - [x] Compare graph-only, text-only, and hybrid feature sets.
+- [x] Compare additional ablations: history-only, graph without balance, and hybrid without balance.
 - [x] Handle class imbalance with class weights and optional SMOTE.
 - [x] Tune decision thresholds on validation data.
 - [x] Report PR-AUC, ROC-AUC, F1, Macro-F1, precision, recall, balanced accuracy, and confusion counts.
@@ -26,6 +27,7 @@ Features are computed only from interactions before a history cutoff. Labels are
 - `notebooks/04_modeling_and_evaluation.ipynb`
 - `data/processed/phase3/phase3_model_metrics.csv`
 - `data/processed/phase3/phase3_feature_importance.csv`
+- `data/processed/phase3/phase3_prediction_scores.csv`
 - Report figures in `reports/figures/`
 
 ## Reporting Guidance

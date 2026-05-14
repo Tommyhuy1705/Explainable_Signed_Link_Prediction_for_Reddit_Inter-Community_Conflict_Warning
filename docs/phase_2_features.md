@@ -4,6 +4,8 @@
 
 - [x] Build a signed directed MultiDiGraph with NetworkX.
 - [x] Extract node features: in-degree, out-degree, signed degree, PageRank, betweenness, reciprocity.
+- [x] Extract clustering coefficient and Louvain/greedy-modularity community features.
+- [x] Extract community-level negativity features and same-community pair features.
 - [x] Extract pair features: interaction count, positive count, negative count, negative ratio, reciprocal edge.
 - [x] Extract approximate structural-balance features from signed local neighborhoods.
 - [x] Parse the 86 `PROPERTIES` values into numeric text features.
@@ -25,6 +27,7 @@
 | Feature group | Examples |
 |---|---|
 | Graph/history | degree, PageRank, reciprocity, previous positive/negative counts |
+| Community/clustering | clustering coefficient, community size, same-community flag, community negativity gap |
 | Structural balance | common neighbors, `balance_+++`, `balance_++-`, `balance_+--`, `balance_---` |
 | Text | `text_property_00` to `text_property_85`, body/title share |
 | Hybrid | all graph, balance, temporal-history, and text features |

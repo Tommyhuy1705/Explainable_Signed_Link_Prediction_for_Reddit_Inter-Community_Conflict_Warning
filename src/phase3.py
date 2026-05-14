@@ -8,10 +8,20 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score, average_precision_score, f1_score, roc_auc_score
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
+    confusion_matrix,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 
@@ -34,6 +44,7 @@ except Exception:  # pragma: no cover
 
 
 TARGET_COLUMN = "negative_label"
+TEXT_FEATURE_PREFIX = "text_property_"
 IGNORED_COLUMNS = {
     "source_subreddit",
     "target_subreddit",
@@ -97,8 +108,8 @@ def _build_history_features(frame: pd.DataFrame, history_end: pd.Timestamp) -> p
     if history_frame.empty:
         return pd.DataFrame(columns=["source_subreddit", "target_subreddit"])
 
-    _, node_features, edge_features, triadic_features = build_feature_components(history_frame)
-    feature_table = assemble_feature_dataset(node_features, edge_features, triadic_features)
+    _, node_features, edge_features, triadic_features, text_features = build_feature_components(history_frame)
+    feature_table = assemble_feature_dataset(node_features, edge_features, triadic_features, text_features)
     if TARGET_COLUMN in feature_table.columns:
         feature_table = feature_table.drop(columns=[TARGET_COLUMN])
     return feature_table
@@ -154,22 +165,76 @@ def _apply_smote_if_available(x_train: pd.DataFrame, y_train: pd.Series) -> tupl
 def _safe_probability_scores(model, x_frame: pd.DataFrame) -> np.ndarray:
     """Get probability-like scores for evaluation."""
     if hasattr(model, "predict_proba"):
-        return model.predict_proba(x_frame)[:, 1]
+        probabilities = model.predict_proba(x_frame)
+        if probabilities.shape[1] == 1:
+            classes = getattr(model, "classes_", np.array([0]))
+            return np.ones(len(x_frame)) if int(classes[0]) == 1 else np.zeros(len(x_frame))
+        return probabilities[:, 1]
     decision = model.decision_function(x_frame)
     return 1 / (1 + np.exp(-decision))
 
 
-def _evaluate_model(model, x_frame: pd.DataFrame, y_true: pd.Series) -> dict[str, float]:
-    """Compute ROC-AUC, F1, PR-AUC, and accuracy for a fitted model."""
-    probabilities = _safe_probability_scores(model, x_frame)
-    predictions = (probabilities >= 0.5).astype(int)
+def _evaluate_scores(y_true: pd.Series, probabilities: np.ndarray, threshold: float = 0.5) -> dict[str, float]:
+    """Compute threshold-free and threshold-dependent binary metrics."""
+    predictions = (probabilities >= threshold).astype(int)
+    tn, fp, fn, tp = confusion_matrix(y_true, predictions, labels=[0, 1]).ravel()
     metrics = {
         "roc_auc": roc_auc_score(y_true, probabilities) if y_true.nunique() > 1 else float("nan"),
-        "f1": f1_score(y_true, predictions, zero_division=0),
         "pr_auc": average_precision_score(y_true, probabilities) if y_true.nunique() > 1 else float("nan"),
+        "f1": f1_score(y_true, predictions, zero_division=0),
+        "macro_f1": f1_score(y_true, predictions, average="macro", zero_division=0),
+        "precision": precision_score(y_true, predictions, zero_division=0),
+        "recall": recall_score(y_true, predictions, zero_division=0),
+        "balanced_accuracy": balanced_accuracy_score(y_true, predictions) if y_true.nunique() > 1 else float("nan"),
         "accuracy": accuracy_score(y_true, predictions),
+        "threshold": float(threshold),
+        "tn": int(tn),
+        "fp": int(fp),
+        "fn": int(fn),
+        "tp": int(tp),
     }
     return metrics
+
+
+def _tune_threshold(y_true: pd.Series, probabilities: np.ndarray) -> float:
+    """Select a decision threshold on validation data by maximizing F1."""
+    if y_true.nunique() < 2:
+        return 0.5
+    best_threshold = 0.5
+    best_score = -1.0
+    for threshold in np.linspace(0.01, 0.99, 99):
+        score = f1_score(y_true, probabilities >= threshold, zero_division=0)
+        if score > best_score:
+            best_threshold = float(threshold)
+            best_score = float(score)
+    return best_threshold
+
+
+def _evaluate_model(model, x_frame: pd.DataFrame, y_true: pd.Series, threshold: float = 0.5) -> dict[str, float]:
+    """Evaluate a fitted model with a supplied decision threshold."""
+    probabilities = _safe_probability_scores(model, x_frame)
+    return _evaluate_scores(y_true, probabilities, threshold)
+
+
+def _is_text_feature(column: str) -> bool:
+    """Identify features derived from the 86 SNAP text-property vector."""
+    return (
+        column.startswith(TEXT_FEATURE_PREFIX)
+        or column == "text_feature_count"
+        or column.startswith("link_location_")
+    )
+
+
+def _build_feature_sets(feature_columns: list[str]) -> dict[str, list[str]]:
+    """Create ablation feature sets for paper-style model comparison."""
+    text_columns = [column for column in feature_columns if _is_text_feature(column)]
+    graph_columns = [column for column in feature_columns if column not in text_columns]
+    feature_sets = {"hybrid": feature_columns}
+    if graph_columns:
+        feature_sets["graph_only"] = graph_columns
+    if text_columns:
+        feature_sets["text_only"] = text_columns
+    return feature_sets
 
 
 def _fit_models(x_train: pd.DataFrame, y_train: pd.Series) -> dict[str, object]:
@@ -177,6 +242,8 @@ def _fit_models(x_train: pd.DataFrame, y_train: pd.Series) -> dict[str, object]:
     x_resampled, y_resampled = _apply_smote_if_available(x_train, y_train)
     models: dict[str, object] = {}
 
+    models["dummy_most_frequent"] = DummyClassifier(strategy="most_frequent")
+    models["dummy_prior"] = DummyClassifier(strategy="prior")
     models["logistic_regression"] = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="median")),
@@ -207,6 +274,7 @@ def _fit_models(x_train: pd.DataFrame, y_train: pd.Series) -> dict[str, object]:
             eval_metric="logloss",
             random_state=42,
             n_jobs=-1,
+            verbosity=0,
         )
 
     if LGBMClassifier is not None:
@@ -217,11 +285,16 @@ def _fit_models(x_train: pd.DataFrame, y_train: pd.Series) -> dict[str, object]:
             num_leaves=31,
             random_state=42,
             n_jobs=-1,
+            verbosity=-1,
+            force_col_wise=True,
         )
 
     fitted_models: dict[str, object] = {}
     for name, model in models.items():
-        model.fit(x_resampled, y_resampled)
+        if name.startswith("dummy_"):
+            model.fit(x_train, y_train)
+        else:
+            model.fit(x_resampled, y_resampled)
         fitted_models[name] = model
     return fitted_models
 
@@ -234,46 +307,67 @@ def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.
     x_validation, y_validation, _ = build_feature_matrix(splits.validation)
     x_test, y_test, _ = build_feature_matrix(splits.test)
 
-    fitted_models = _fit_models(x_train, y_train)
-
     metric_rows = []
     importance_rows = []
-    for name, model in fitted_models.items():
-        validation_metrics = _evaluate_model(model, x_validation, y_validation)
-        test_metrics = _evaluate_model(model, x_test, y_test)
-        metric_rows.append(
-            {
-                "model": name,
-                "validation_roc_auc": validation_metrics["roc_auc"],
-                "validation_f1": validation_metrics["f1"],
-                "validation_pr_auc": validation_metrics["pr_auc"],
-                "validation_accuracy": validation_metrics["accuracy"],
-                "test_roc_auc": test_metrics["roc_auc"],
-                "test_f1": test_metrics["f1"],
-                "test_pr_auc": test_metrics["pr_auc"],
-                "test_accuracy": test_metrics["accuracy"],
-            }
-        )
 
-        if hasattr(model, "named_steps"):
-            model_object = model.named_steps["model"]
-            importance_values = np.abs(model_object.coef_).ravel()
-        elif hasattr(model, "feature_importances_"):
-            importance_values = np.asarray(model.feature_importances_)
-        else:
-            importance_values = np.zeros(len(feature_columns))
+    for feature_set, selected_columns in _build_feature_sets(feature_columns).items():
+        selected_train = x_train[selected_columns]
+        selected_validation = x_validation.reindex(columns=selected_columns, fill_value=0)
+        selected_test = x_test.reindex(columns=selected_columns, fill_value=0)
 
-        for feature_name, importance in zip(feature_columns, importance_values):
-            importance_rows.append(
+        fitted_models = _fit_models(selected_train, y_train)
+
+        if "negative_ratio" in selected_columns:
+            validation_scores = selected_validation["negative_ratio"].to_numpy()
+            test_scores = selected_test["negative_ratio"].to_numpy()
+            threshold = _tune_threshold(y_validation, validation_scores)
+            validation_metrics = _evaluate_scores(y_validation, validation_scores, threshold)
+            test_metrics = _evaluate_scores(y_test, test_scores, threshold)
+            metric_rows.append(
                 {
-                    "model": name,
-                    "feature": feature_name,
-                    "importance": float(importance),
+                    "feature_set": feature_set,
+                    "model": "historical_negative_ratio",
+                    **{f"validation_{key}": value for key, value in validation_metrics.items()},
+                    **{f"test_{key}": value for key, value in test_metrics.items()},
+                    "n_features": 1,
                 }
             )
 
-    metrics_frame = pd.DataFrame(metric_rows).sort_values("test_pr_auc", ascending=False).reset_index(drop=True)
-    importance_frame = pd.DataFrame(importance_rows).sort_values(["model", "importance"], ascending=[True, False])
+        for name, model in fitted_models.items():
+            validation_probabilities = _safe_probability_scores(model, selected_validation)
+            threshold = _tune_threshold(y_validation, validation_probabilities)
+            validation_metrics = _evaluate_scores(y_validation, validation_probabilities, threshold)
+            test_metrics = _evaluate_model(model, selected_test, y_test, threshold)
+            metric_rows.append(
+                {
+                    "feature_set": feature_set,
+                    "model": name,
+                    **{f"validation_{key}": value for key, value in validation_metrics.items()},
+                    **{f"test_{key}": value for key, value in test_metrics.items()},
+                    "n_features": len(selected_columns),
+                }
+            )
+
+            if hasattr(model, "named_steps"):
+                model_object = model.named_steps["model"]
+                importance_values = np.abs(model_object.coef_).ravel()
+            elif hasattr(model, "feature_importances_"):
+                importance_values = np.asarray(model.feature_importances_)
+            else:
+                importance_values = np.zeros(len(selected_columns))
+
+            for feature_name, importance in zip(selected_columns, importance_values):
+                importance_rows.append(
+                    {
+                        "feature_set": feature_set,
+                        "model": name,
+                        "feature": feature_name,
+                        "importance": float(importance),
+                    }
+                )
+
+    metrics_frame = pd.DataFrame(metric_rows).sort_values(["test_pr_auc", "test_f1"], ascending=False).reset_index(drop=True)
+    importance_frame = pd.DataFrame(importance_rows).sort_values(["feature_set", "model", "importance"], ascending=[True, True, False])
     return metrics_frame, importance_frame, splits
 
 

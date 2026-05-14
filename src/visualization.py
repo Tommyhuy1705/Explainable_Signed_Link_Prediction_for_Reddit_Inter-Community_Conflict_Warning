@@ -7,6 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
+from sklearn.metrics import auc, precision_recall_curve, roc_curve
 
 
 FIGURE_DPI = 180
@@ -159,14 +160,75 @@ def plot_feature_importance(importance_frame: pd.DataFrame, metrics_frame: pd.Da
     return _save_current_figure(output_path / "feature_importance_top20.png")
 
 
+def _select_curve_models(metrics_frame: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
+    """Select a compact, informative set of models for curve plots."""
+    ranked = metrics_frame[
+        ~metrics_frame["model"].str.startswith("dummy")
+    ].sort_values(["test_pr_auc", "test_f1"], ascending=False)
+    selected = ranked.head(top_n).copy()
+    historical = ranked[ranked["model"] == "historical_negative_ratio"].head(1)
+    if not historical.empty:
+        selected = pd.concat([selected, historical], ignore_index=True).drop_duplicates(["feature_set", "model"])
+    return selected
+
+
+def plot_precision_recall_curve(score_frame: pd.DataFrame, metrics_frame: pd.DataFrame, output_dir: str | Path, top_n: int = 5) -> Path:
+    """Plot test-set precision-recall curves for top models and a strong heuristic baseline."""
+    output_path = _prepare_output_dir(output_dir)
+    test_scores = score_frame[score_frame["split"] == "test"].copy()
+    selected = _select_curve_models(metrics_frame, top_n=top_n)
+
+    plt.figure(figsize=(7, 5))
+    for row in selected.itertuples(index=False):
+        subset = test_scores[(test_scores["feature_set"] == row.feature_set) & (test_scores["model"] == row.model)]
+        if subset.empty or subset["y_true"].nunique() < 2:
+            continue
+        precision, recall, _ = precision_recall_curve(subset["y_true"], subset["score"])
+        label = f"{row.feature_set} | {row.model} (AP={row.test_pr_auc:.3f})"
+        plt.plot(recall, precision, linewidth=1.8, label=label)
+
+    prevalence = test_scores["y_true"].mean() if not test_scores.empty else 0.0
+    plt.axhline(prevalence, color="gray", linestyle="--", linewidth=1.2, label=f"prevalence={prevalence:.3f}")
+    plt.title("Precision-recall curves on strict temporal test set")
+    plt.xlabel("Recall")
+    plt.ylabel("Precision")
+    plt.legend(fontsize=8)
+    return _save_current_figure(output_path / "precision_recall_curve.png")
+
+
+def plot_roc_curve(score_frame: pd.DataFrame, metrics_frame: pd.DataFrame, output_dir: str | Path, top_n: int = 5) -> Path:
+    """Plot test-set ROC curves for top models and a strong heuristic baseline."""
+    output_path = _prepare_output_dir(output_dir)
+    test_scores = score_frame[score_frame["split"] == "test"].copy()
+    selected = _select_curve_models(metrics_frame, top_n=top_n)
+
+    plt.figure(figsize=(7, 5))
+    for row in selected.itertuples(index=False):
+        subset = test_scores[(test_scores["feature_set"] == row.feature_set) & (test_scores["model"] == row.model)]
+        if subset.empty or subset["y_true"].nunique() < 2:
+            continue
+        false_positive_rate, true_positive_rate, _ = roc_curve(subset["y_true"], subset["score"])
+        roc_auc = auc(false_positive_rate, true_positive_rate)
+        label = f"{row.feature_set} | {row.model} (AUC={roc_auc:.3f})"
+        plt.plot(false_positive_rate, true_positive_rate, linewidth=1.8, label=label)
+
+    plt.plot([0, 1], [0, 1], color="gray", linestyle="--", linewidth=1.2, label="random")
+    plt.title("ROC curves on strict temporal test set")
+    plt.xlabel("False positive rate")
+    plt.ylabel("True positive rate")
+    plt.legend(fontsize=8)
+    return _save_current_figure(output_path / "roc_curve.png")
+
+
 def export_report_figures(
     interactions: pd.DataFrame,
     metrics_frame: pd.DataFrame,
     importance_frame: pd.DataFrame,
     output_dir: str | Path,
+    score_frame: pd.DataFrame | None = None,
 ) -> dict[str, Path | list[Path]]:
     """Export the main figures expected in the final report."""
-    return {
+    figures: dict[str, Path | list[Path]] = {
         "label_distribution": plot_label_distribution(interactions, output_dir),
         "monthly_negative_ratio": plot_monthly_negative_ratio(interactions, output_dir),
         "top_negative_subreddits": plot_top_negative_subreddits(interactions, output_dir),
@@ -175,3 +237,7 @@ def export_report_figures(
         "best_confusion_matrix": plot_best_confusion_matrix(metrics_frame, output_dir),
         "feature_importance": plot_feature_importance(importance_frame, metrics_frame, output_dir),
     }
+    if score_frame is not None and not score_frame.empty:
+        figures["precision_recall_curve"] = plot_precision_recall_curve(score_frame, metrics_frame, output_dir)
+        figures["roc_curve"] = plot_roc_curve(score_frame, metrics_frame, output_dir)
+    return figures

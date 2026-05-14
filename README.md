@@ -1,49 +1,129 @@
-# Explainable_Signed_Link_Prediction_for_Reddit_Inter-Community_Conflict_Warning
+# Explainable Signed Link Prediction for Reddit Inter-Community Conflict Warning
 
 ## Project Overview
-This project is a final assignment for the **Social Data Analysis** course. The goal is to predict the sentiment (positive or negative) of hyperlinks between Reddit communities (subreddits) by leveraging signed directed network characteristics and structural balance theory over time.
 
-## Objectives
-- Build a temporal, signed, and directed network from Stanford's SNAP Reddit dataset.
-- Extract node-level, edge-level, and triadic-level (Structural Balance) features.
-- Address data leakage via temporal splitting and handle highly imbalanced class distributions.
-- Train and evaluate Machine Learning models (Logistic Regression, Random Forest, XGBoost) to classify negative cross-community interactions.
+This repository contains a paper-style final project for the Social Media Data Analysis course. The project studies how Reddit communities link to each other and predicts whether future cross-community hyperlinks are likely to be negative using temporal signed-network features.
+
+Recommended project title:
+
+> Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed Network Features
+
+The course-project scope is **negative hyperlink prediction**. The longer-term research extension is **explainable early warning of inter-community conflict**.
+
+## Research Questions
+
+1. Which subreddits are major sources and targets of negative cross-community hyperlinks?
+2. Do signed network features improve prediction compared with text-only features?
+3. Does a hybrid model that combines text, graph, and temporal history outperform simple baselines?
+4. Which historical features explain future negative inter-community interactions?
 
 ## Dataset
-The project utilizes the [Stanford SNAP Reddit Hyperlink Network](https://snap.stanford.edu/data/soc-RedditHyperlinks.html).
+
+The project uses the Stanford SNAP Reddit Hyperlink Network:
+
 - `soc-redditHyperlinks-body.tsv`
 - `soc-redditHyperlinks-title.tsv`
 
-*Note: Due to file size limits, the `data/raw/` directory is ignored in this repository. Please download the datasets from the link above and place them in `data/raw/` before running the notebooks.*
+Source: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
 
-## Installation & Setup
-1. Clone the repository:
-   \`\`\`bash
-   git clone [https://github.com/your-username/SNA_Reddit_Project.git](https://github.com/Tommyhuy1705/SNA_Reddit_Project.git)
-   cd SNA_Reddit_Project
-   \`\`\`
-2. Create a virtual environment and activate it:
-   \`\`\`bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-   \`\`\`
-3. Install the required packages:
-   \`\`\`bash
-   pip install -r requirements.txt
-   \`\`\`
+The raw files should be placed in `data/raw/`. They are not committed because of size.
+
+Expected raw schema:
+
+- `SOURCE_SUBREDDIT`
+- `TARGET_SUBREDDIT`
+- `POST_ID`
+- `TIMESTAMP`
+- `LINK_SENTIMENT`
+- `PROPERTIES`
+
+The `PROPERTIES` column contains 86 numeric text-property features. The pipeline parses these into `text_property_00` to `text_property_85` for text-only and hybrid ablation experiments.
+
+## Methodology
+
+The implemented workflow has four phases:
+
+1. **Data preparation**
+   - Load body/title TSV files.
+   - Standardize column names and timestamps.
+   - Concatenate both files and add `dataset_source`.
+   - Apply optional k-core filtering for a denser modeling graph.
+
+2. **Network construction and feature engineering**
+   - Build a directed signed multigraph.
+   - Extract node features: in/out degree, signed degree, PageRank, betweenness, reciprocity.
+   - Extract pair features: interaction count, positive/negative counts, negative ratio, reciprocal edge.
+   - Extract structural-balance features from signed local neighborhoods.
+   - Aggregate 86 text-property features at pair level.
+
+3. **Strict temporal modeling**
+   - Train features are computed only from interactions before the history cutoff.
+   - Labels are computed from a disjoint future window.
+   - Models are compared using graph-only, text-only, and hybrid feature sets.
+   - Baselines include dummy prior and historical negative-ratio heuristics.
+   - Decision thresholds are tuned on validation data and applied once to the test set.
+
+4. **Report figures and interpretation**
+   - Label distribution.
+   - Monthly negative-link ratio.
+   - Top negative source and target subreddits.
+   - Degree distribution.
+   - Model comparison by PR-AUC.
+   - Confusion matrix.
+   - Feature importance.
+
+## Evaluation Metrics
+
+Because negative links are a minority class, accuracy is not the main metric. The report should emphasize:
+
+- PR-AUC
+- ROC-AUC
+- F1 for the negative class
+- Macro-F1
+- Precision and recall
+- Balanced accuracy
+- Confusion matrix
+
+## Installation
+
+Recommended Python version: 3.11 or 3.12. Some ML libraries may not yet provide stable wheels for the newest Python releases.
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+```
 
 ## How to Run
-Follow the numbered Jupyter Notebooks in the `notebooks/` directory sequentially:
-1. `01_data_exploration.ipynb`: Cleans data and performs Exploratory Data Analysis.
-2. `02_network_construction.ipynb`: Builds the Multi-DiGraph using NetworkX.
-3. `03_feature_engineering.ipynb`: Extracts Centrality and Triadic Balance features.
-4. `04_modeling_and_evaluation.ipynb`: Trains ML models and evaluates predictions using F1-score and PR-AUC.
+
+Run the notebooks in order:
+
+1. `notebooks/01_data_exploration.ipynb`
+2. `notebooks/02_network_construction.ipynb`
+3. `notebooks/03_feature_engineering.ipynb`
+4. `notebooks/04_modeling_and_evaluation.ipynb`
+
+The main reusable code is in `src/`:
+
+- `phase1.py`: loading, cleaning, filtering, splitting.
+- `phase2.py`: graph construction and feature engineering.
+- `phase3.py`: temporal split, baselines, models, threshold tuning, evaluation.
+- `visualization.py`: report-ready figures.
+
+## Important Limitations
+
+- `LINK_SENTIMENT` is a derived label, not a perfect ground-truth label of real-world conflict.
+- A negative hyperlink is a proxy for negative inter-community interaction, not direct proof of raids or harassment.
+- K-core filtering is useful for course-scale modeling, but the report should state that it restricts evaluation to a denser subgraph.
+- Strict temporal evaluation is used to reduce leakage: no future label-window information is used as a model feature.
 
 ## Team Members
-- Trần Viết Gia Huy - 31231027056
-- Nguyễn Minh Nhựt - [MSSV]
-- Nguyễn Trọng Hưởng - [MSSV]
-- Tô Xuân Đông - [MSSV]
+
+- Tran Viet Gia Huy - 31231027056
+- Nguyen Minh Nhut - MSSV
+- Nguyen Trong Huong - MSSV
+- To Xuan Dong - MSSV
 
 ## License
-This project is for educational purposes under the coursework of UEH (University of Economics Ho Chi Minh city).
+
+This project is for educational use in the UEH Social Media Data Analysis course.

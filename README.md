@@ -51,8 +51,9 @@ The implemented workflow has four phases:
 
 2. **Network construction and feature engineering**
    - Build a directed signed multigraph.
-   - Extract node features: in/out degree, signed degree, PageRank, betweenness, reciprocity.
+   - Extract node features: in/out degree, signed degree, PageRank, betweenness, reciprocity, clustering coefficient, and community-level negative ratios.
    - Extract pair features: interaction count, positive/negative counts, negative ratio, reciprocal edge.
+   - Extract community-pair features: same-community flag, community size ratio, and community negativity gap.
    - Extract structural-balance features from signed local neighborhoods.
    - Aggregate 86 text-property features at pair level.
 
@@ -60,6 +61,7 @@ The implemented workflow has four phases:
    - Train features are computed only from interactions before the history cutoff.
    - Labels are computed from a disjoint future window.
    - Models are compared using graph-only, text-only, and hybrid feature sets.
+   - Ablations include no-balance graph/hybrid settings and a history-only feature set.
    - Baselines include dummy prior and historical negative-ratio heuristics.
    - Decision thresholds are tuned on validation data and applied once to the test set.
 
@@ -69,6 +71,7 @@ The implemented workflow has four phases:
    - Top negative source and target subreddits.
    - Degree distribution.
    - Model comparison by PR-AUC.
+   - Precision-recall and ROC curves.
    - Confusion matrix.
    - Feature importance.
 

@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter, defaultdict
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import networkx as nx
 import numpy as np
@@ -131,7 +129,7 @@ def build_node_feature_table(graph: nx.MultiDiGraph) -> pd.DataFrame:
             simple_graph[source][target]["weight"] += 1
             simple_graph[source][target]["signed_weight"] += sign_weight
         else:
-            simple_graph.add_edge(source, target, weight=1, signed_weight=sign_weight)
+                simple_graph.add_edge(source, target, weight=1, signed_weight=sign_weight)
 
     pagerank_scores = nx.pagerank(simple_graph, alpha=0.85, weight="weight") if simple_graph.number_of_edges() else {}
     betweenness_scores = (
@@ -142,6 +140,12 @@ def build_node_feature_table(graph: nx.MultiDiGraph) -> pd.DataFrame:
     reciprocity_scores = nx.reciprocity(simple_graph, nodes=list(simple_graph.nodes())) if simple_graph.number_of_edges() else {}
     if isinstance(reciprocity_scores, float):
         reciprocity_scores = {node: reciprocity_scores for node in simple_graph.nodes()}
+
+    undirected_graph = simple_graph.to_undirected()
+    clustering_scores = nx.clustering(undirected_graph, weight="weight") if undirected_graph.number_of_edges() else {}
+    community_map = _detect_communities(undirected_graph)
+    community_sizes = Counter(community_map.values())
+    community_stats = _build_community_sentiment_stats(graph, community_map)
 
     rows = []
     for node in simple_graph.nodes():
@@ -154,6 +158,9 @@ def build_node_feature_table(graph: nx.MultiDiGraph) -> pd.DataFrame:
         rows.append(
             {
                 "node": node,
+                "community_id": community_map.get(node, -1),
+                "community_size": community_sizes.get(community_map.get(node, -1), 0),
+                "clustering_coefficient": clustering_scores.get(node, 0.0),
                 "in_degree": simple_graph.in_degree(node),
                 "out_degree": simple_graph.out_degree(node),
                 "total_degree": simple_graph.degree(node),
@@ -164,9 +171,62 @@ def build_node_feature_table(graph: nx.MultiDiGraph) -> pd.DataFrame:
                 "pagerank": pagerank_scores.get(node, 0.0),
                 "betweenness": betweenness_scores.get(node, 0.0),
                 "reciprocity": reciprocity_scores.get(node, 0.0),
+                "community_negative_ratio": community_stats.get(community_map.get(node, -1), {}).get("negative_ratio", 0.0),
+                "community_out_negative_ratio": community_stats.get(community_map.get(node, -1), {}).get("out_negative_ratio", 0.0),
+                "community_in_negative_ratio": community_stats.get(community_map.get(node, -1), {}).get("in_negative_ratio", 0.0),
             }
         )
     return pd.DataFrame(rows)
+
+
+def _detect_communities(graph: nx.Graph) -> dict[str, int]:
+    """Detect communities on the undirected projection for SNA features."""
+    if graph.number_of_nodes() == 0:
+        return {}
+    if graph.number_of_edges() == 0:
+        return {node: index for index, node in enumerate(graph.nodes())}
+
+    try:
+        communities = nx.community.louvain_communities(graph, weight="weight", seed=42)
+    except Exception:
+        communities = nx.community.greedy_modularity_communities(graph, weight="weight")
+
+    community_map: dict[str, int] = {}
+    for community_id, community_nodes in enumerate(communities):
+        for node in community_nodes:
+            community_map[node] = community_id
+    return community_map
+
+
+def _build_community_sentiment_stats(graph: nx.MultiDiGraph, community_map: dict[str, int]) -> dict[int, dict[str, float]]:
+    """Aggregate positive/negative interaction ratios at community level."""
+    stats: dict[int, Counter] = defaultdict(Counter)
+    for source, target, data in graph.edges(data=True):
+        sentiment = int(data.get("sentiment", 1))
+        source_community = community_map.get(source, -1)
+        target_community = community_map.get(target, -1)
+
+        stats[source_community]["out_total"] += 1
+        stats[target_community]["in_total"] += 1
+        stats[source_community]["total"] += 1
+        if target_community != source_community:
+            stats[target_community]["total"] += 1
+
+        if sentiment == -1:
+            stats[source_community]["out_negative"] += 1
+            stats[target_community]["in_negative"] += 1
+            stats[source_community]["negative"] += 1
+            if target_community != source_community:
+                stats[target_community]["negative"] += 1
+
+    ratios: dict[int, dict[str, float]] = {}
+    for community_id, counts in stats.items():
+        ratios[community_id] = {
+            "negative_ratio": counts["negative"] / counts["total"] if counts["total"] else 0.0,
+            "out_negative_ratio": counts["out_negative"] / counts["out_total"] if counts["out_total"] else 0.0,
+            "in_negative_ratio": counts["in_negative"] / counts["in_total"] if counts["in_total"] else 0.0,
+        }
+    return ratios
 
 
 def build_edge_feature_table(frame: pd.DataFrame, graph: nx.MultiDiGraph) -> pd.DataFrame:
@@ -282,6 +342,16 @@ def assemble_feature_dataset(
     merged = edge_features.merge(triadic_features, on=["source_subreddit", "target_subreddit"], how="left")
     if text_features is not None and not text_features.empty:
         merged = merged.merge(text_features, on=["source_subreddit", "target_subreddit"], how="left")
+    if {"source_community_id", "target_community_id"}.issubset(merged.columns):
+        merged["same_community"] = (merged["source_community_id"] == merged["target_community_id"]).astype(int)
+    if {"source_community_size", "target_community_size"}.issubset(merged.columns):
+        smaller = merged[["source_community_size", "target_community_size"]].min(axis=1)
+        larger = merged[["source_community_size", "target_community_size"]].max(axis=1).clip(lower=1)
+        merged["community_size_ratio"] = smaller / larger
+    if {"source_community_negative_ratio", "target_community_negative_ratio"}.issubset(merged.columns):
+        merged["community_negative_ratio_gap"] = (
+            merged["source_community_negative_ratio"] - merged["target_community_negative_ratio"]
+        ).abs()
     merged["negative_label"] = (merged["negative_count"] > merged["positive_count"]).astype(int)
     merged = merged.fillna(0)
     return merged

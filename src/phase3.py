@@ -56,6 +56,25 @@ IGNORED_COLUMNS = {
     "future_interaction_count",
     "future_start",
     "future_end",
+    "source_community_id",
+    "target_community_id",
+}
+
+PAIR_HISTORY_FEATURES = {
+    "interaction_count",
+    "positive_count",
+    "negative_count",
+    "sentiment_balance",
+    "negative_ratio",
+    "reciprocal_edge",
+}
+
+BALANCE_FEATURES = {
+    "common_neighbors",
+    "balance_+++",
+    "balance_++-",
+    "balance_+--",
+    "balance_---",
 }
 
 
@@ -216,6 +235,30 @@ def _evaluate_model(model, x_frame: pd.DataFrame, y_true: pd.Series, threshold: 
     return _evaluate_scores(y_true, probabilities, threshold)
 
 
+def _build_score_rows(
+    split_name: str,
+    feature_set: str,
+    model_name: str,
+    y_true: pd.Series,
+    probabilities: np.ndarray,
+    threshold: float,
+) -> list[dict[str, object]]:
+    """Create row-wise prediction scores for PR/ROC curve plotting."""
+    predictions = (probabilities >= threshold).astype(int)
+    return [
+        {
+            "split": split_name,
+            "feature_set": feature_set,
+            "model": model_name,
+            "y_true": int(label),
+            "score": float(score),
+            "prediction": int(prediction),
+            "threshold": float(threshold),
+        }
+        for label, score, prediction in zip(y_true, probabilities, predictions)
+    ]
+
+
 def _is_text_feature(column: str) -> bool:
     """Identify features derived from the 86 SNAP text-property vector."""
     return (
@@ -223,6 +266,11 @@ def _is_text_feature(column: str) -> bool:
         or column == "text_feature_count"
         or column.startswith("link_location_")
     )
+
+
+def _is_balance_feature(column: str) -> bool:
+    """Identify local structural-balance features."""
+    return column in BALANCE_FEATURES or column.startswith("balance_")
 
 
 def _build_feature_sets(feature_columns: list[str]) -> dict[str, list[str]]:
@@ -234,6 +282,15 @@ def _build_feature_sets(feature_columns: list[str]) -> dict[str, list[str]]:
         feature_sets["graph_only"] = graph_columns
     if text_columns:
         feature_sets["text_only"] = text_columns
+    no_balance_columns = [column for column in feature_columns if not _is_balance_feature(column)]
+    if len(no_balance_columns) < len(feature_columns):
+        feature_sets["hybrid_no_balance"] = no_balance_columns
+    graph_no_balance_columns = [column for column in graph_columns if not _is_balance_feature(column)]
+    if graph_columns and len(graph_no_balance_columns) < len(graph_columns):
+        feature_sets["graph_no_balance"] = graph_no_balance_columns
+    history_columns = [column for column in feature_columns if column in PAIR_HISTORY_FEATURES]
+    if history_columns:
+        feature_sets["history_only"] = history_columns
     return feature_sets
 
 
@@ -299,8 +356,8 @@ def _fit_models(x_train: pd.DataFrame, y_train: pd.Series) -> dict[str, object]:
     return fitted_models
 
 
-def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, SplitData]:
-    """Run strict temporal phase 3 and return metrics plus feature importances."""
+def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, SplitData]:
+    """Run strict temporal phase 3 and return metrics, importances, scores, and splits."""
     splits = build_strict_temporal_splits(modeling_table)
 
     x_train, y_train, feature_columns = build_feature_matrix(splits.train)
@@ -309,6 +366,7 @@ def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.
 
     metric_rows = []
     importance_rows = []
+    score_rows = []
 
     for feature_set, selected_columns in _build_feature_sets(feature_columns).items():
         selected_train = x_train[selected_columns]
@@ -323,6 +381,12 @@ def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.
             threshold = _tune_threshold(y_validation, validation_scores)
             validation_metrics = _evaluate_scores(y_validation, validation_scores, threshold)
             test_metrics = _evaluate_scores(y_test, test_scores, threshold)
+            score_rows.extend(
+                _build_score_rows("validation", feature_set, "historical_negative_ratio", y_validation, validation_scores, threshold)
+            )
+            score_rows.extend(
+                _build_score_rows("test", feature_set, "historical_negative_ratio", y_test, test_scores, threshold)
+            )
             metric_rows.append(
                 {
                     "feature_set": feature_set,
@@ -337,7 +401,14 @@ def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.
             validation_probabilities = _safe_probability_scores(model, selected_validation)
             threshold = _tune_threshold(y_validation, validation_probabilities)
             validation_metrics = _evaluate_scores(y_validation, validation_probabilities, threshold)
-            test_metrics = _evaluate_model(model, selected_test, y_test, threshold)
+            test_probabilities = _safe_probability_scores(model, selected_test)
+            test_metrics = _evaluate_scores(y_test, test_probabilities, threshold)
+            score_rows.extend(
+                _build_score_rows("validation", feature_set, name, y_validation, validation_probabilities, threshold)
+            )
+            score_rows.extend(
+                _build_score_rows("test", feature_set, name, y_test, test_probabilities, threshold)
+            )
             metric_rows.append(
                 {
                     "feature_set": feature_set,
@@ -368,10 +439,16 @@ def run_phase3_pipeline(modeling_table: pd.DataFrame) -> tuple[pd.DataFrame, pd.
 
     metrics_frame = pd.DataFrame(metric_rows).sort_values(["test_pr_auc", "test_f1"], ascending=False).reset_index(drop=True)
     importance_frame = pd.DataFrame(importance_rows).sort_values(["feature_set", "model", "importance"], ascending=[True, True, False])
-    return metrics_frame, importance_frame, splits
+    score_frame = pd.DataFrame(score_rows)
+    return metrics_frame, importance_frame, score_frame, splits
 
 
-def export_phase3_outputs(metrics_frame: pd.DataFrame, importance_frame: pd.DataFrame, output_dir: str | Path) -> dict[str, Path]:
+def export_phase3_outputs(
+    metrics_frame: pd.DataFrame,
+    importance_frame: pd.DataFrame,
+    output_dir: str | Path,
+    score_frame: pd.DataFrame | None = None,
+) -> dict[str, Path]:
     """Persist the phase 3 outputs to CSV files."""
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -379,4 +456,9 @@ def export_phase3_outputs(metrics_frame: pd.DataFrame, importance_frame: pd.Data
     importance_path = output_path / "phase3_feature_importance.csv"
     metrics_frame.to_csv(metrics_path, index=False)
     importance_frame.to_csv(importance_path, index=False)
-    return {"metrics": metrics_path, "importance": importance_path}
+    paths = {"metrics": metrics_path, "importance": importance_path}
+    if score_frame is not None:
+        scores_path = output_path / "phase3_prediction_scores.csv"
+        score_frame.to_csv(scores_path, index=False)
+        paths["scores"] = scores_path
+    return paths

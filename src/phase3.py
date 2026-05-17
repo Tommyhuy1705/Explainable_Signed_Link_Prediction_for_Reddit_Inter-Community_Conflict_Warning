@@ -93,7 +93,13 @@ def load_phase1_interactions(path: str | Path) -> pd.DataFrame:
 
 
 def _aggregate_future_labels(frame: pd.DataFrame, future_start: pd.Timestamp, future_end: pd.Timestamp) -> pd.DataFrame:
-    """Build labels from a disjoint future window."""
+    """Build negative-dominant relationship labels from a disjoint future window.
+
+    A source-target pair is labeled negative only when future negative links
+    outnumber future positive/neutral links in the label window. This avoids
+    treating a mostly positive relationship as negative because of one isolated
+    negative hyperlink.
+    """
     future_frame = frame[(frame["timestamp"] > future_start) & (frame["timestamp"] <= future_end)].copy()
     if future_frame.empty:
         return pd.DataFrame(

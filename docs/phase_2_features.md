@@ -25,7 +25,7 @@
 ## Feature Groups for Ablation
 
 | Feature group | Examples |
-|---|---|
+| --- | --- |
 | Graph/history | degree, PageRank, reciprocity, previous positive/negative counts |
 | Community/clustering | clustering coefficient, community size, same-community flag, community negativity gap |
 | Structural balance | common neighbors, `balance_+++`, `balance_++-`, `balance_+--`, `balance_---` |

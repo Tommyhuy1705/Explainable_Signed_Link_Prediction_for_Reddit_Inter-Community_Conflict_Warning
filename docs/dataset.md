@@ -12,7 +12,7 @@ Source URL: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
 ## Raw Schema
 
 | Column | Meaning |
-|---|---|
+| --- | --- |
 | `SOURCE_SUBREDDIT` | Source subreddit containing the hyperlink post |
 | `TARGET_SUBREDDIT` | Target subreddit referenced by the hyperlink |
 | `POST_ID` | Reddit post identifier |
@@ -25,7 +25,7 @@ Source URL: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
 The two raw files contain 858,488 data rows:
 
 | File | Rows | Negative Ratio |
-|---|---:|---:|
+| --- | ---: | ---: |
 | body | 286,561 | 7.35% |
 | title | 571,927 | 10.69% |
 | combined | 858,488 | 9.58% |

@@ -5,7 +5,7 @@ Last verified run: 2026-05-16 using the repository `.venv` kernel after adding c
 ## Data Preparation
 
 | Artifact | Rows |
-|---|---:|
+| --- | ---: |
 | Combined clean interactions | 858,488 |
 | K-core filtered interactions | 708,425 |
 | Phase 1 train interactions | 619,294 |
@@ -17,7 +17,7 @@ Last verified run: 2026-05-16 using the repository `.venv` kernel after adding c
 The modeling target is a future negative-dominant source-target relationship: `negative_label = 1` when future negative hyperlinks outnumber future positive/neutral hyperlinks in the label window.
 
 | Split | Rows |
-|---|---:|
+| --- | ---: |
 | Train source-target pairs | 25,045 |
 | Validation source-target pairs | 26,450 |
 | Test source-target pairs | 24,185 |
@@ -27,13 +27,13 @@ The modeling target is a future negative-dominant source-target relationship: `n
 The best model by test PR-AUC in the latest run is:
 
 | Feature Set | Model | Test PR-AUC | Test ROC-AUC | Test F1 | Test Macro-F1 | Precision | Recall |
-|---|---|---:|---:|---:|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | hybrid | Logistic Regression | 0.1840 | 0.7569 | 0.2700 | 0.5935 | 0.2050 | 0.3954 |
 
 Important baseline:
 
 | Feature Set | Model | Test PR-AUC | Test ROC-AUC | Test F1 |
-|---|---|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: |
 | graph_only | Historical negative ratio | 0.1237 | 0.6328 | 0.2327 |
 | history_only | Logistic Regression | 0.1424 | 0.6905 | 0.2341 |
 | text_only | Logistic Regression | 0.1398 | 0.7118 | 0.2202 |

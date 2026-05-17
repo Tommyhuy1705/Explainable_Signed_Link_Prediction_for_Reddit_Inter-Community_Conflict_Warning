@@ -19,7 +19,7 @@ Features are computed only from interactions before a history cutoff. Labels are
 The target `negative_label` is defined at the source-target pair level: it equals `1` when future negative hyperlinks outnumber future positive/neutral hyperlinks in the label window, and `0` otherwise. This makes the task negative-dominant relationship prediction rather than one-off negative-edge detection.
 
 | Split | History Window | Label Window |
-|---|---|---|
+| --- | --- | --- |
 | Train | <= 2015-12-31 | 2016-01-01 to 2016-06-30 |
 | Validation | <= 2016-06-30 | 2016-07-01 to 2016-12-31 |
 | Test | <= 2016-12-31 | 2017-01-01 to 2017-04-30 |

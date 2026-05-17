@@ -95,7 +95,7 @@ The latest verified `.venv` run is summarized in `docs/run_summary.md`. The expo
 Best test result by PR-AUC:
 
 | Feature Set | Model | Test PR-AUC | Test ROC-AUC | Test F1 | Precision | Recall |
-|---|---|---:|---:|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
 | hybrid | Logistic Regression | 0.1840 | 0.7569 | 0.2700 | 0.2050 | 0.3954 |
 
 ## Installation

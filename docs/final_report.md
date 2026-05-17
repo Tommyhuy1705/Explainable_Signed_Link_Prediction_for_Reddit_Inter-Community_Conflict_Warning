@@ -15,7 +15,7 @@ This project frames Reddit as a temporal signed directed network. Each subreddit
 The project uses the Stanford SNAP Reddit Hyperlink Network:
 
 | File | Rows | Negative Rows | Negative Ratio |
-|---|---:|---:|---:|
+| --- | ---: | ---: | ---: |
 | `soc-redditHyperlinks-body.tsv` | 286,561 | 21,070 | 7.35% |
 | `soc-redditHyperlinks-title.tsv` | 571,927 | 61,140 | 10.69% |
 | Combined | 858,488 | 82,210 | 9.58% |
@@ -45,7 +45,7 @@ The pipeline has four phases:
 The main feature groups are:
 
 | Group | Examples |
-|---|---|
+| --- | --- |
 | Pair history | interaction count, positive count, negative count, negative ratio, sentiment balance |
 | Node/network | in-degree, out-degree, signed degree, PageRank, betweenness, reciprocity |
 | Community/clustering | clustering coefficient, community size, same-community flag, community negativity gap |
@@ -55,7 +55,7 @@ The main feature groups are:
 The strict temporal split is:
 
 | Split | History Window | Label Window | Rows |
-|---|---|---|---:|
+| --- | --- | --- | ---: |
 | Train | <= 2015-12-31 | 2016-01-01 to 2016-06-30 | 25,045 |
 | Validation | <= 2016-06-30 | 2016-07-01 to 2016-12-31 | 26,450 |
 | Test | <= 2016-12-31 | 2017-01-01 to 2017-04-30 | 24,185 |
@@ -88,13 +88,13 @@ Because negative-dominant relationships are rare, accuracy is not the headline m
 Best model by test PR-AUC:
 
 | Feature Set | Model | Test PR-AUC | Test ROC-AUC | F1 | Macro-F1 | Precision | Recall |
-|---|---|---:|---:|---:|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | `hybrid` | Logistic Regression | 0.1840 | 0.7569 | 0.2700 | 0.5935 | 0.2050 | 0.3954 |
 
 Selected comparison:
 
 | Feature Set | Model | Test PR-AUC | Test ROC-AUC | F1 |
-|---|---|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: |
 | `hybrid` | Logistic Regression | 0.1840 | 0.7569 | 0.2700 |
 | `hybrid_no_balance` | Logistic Regression | 0.1837 | 0.7561 | 0.2673 |
 | `graph_only` | Logistic Regression | 0.1812 | 0.7508 | 0.2625 |
@@ -109,7 +109,7 @@ Selected comparison:
 The best model's test confusion counts are:
 
 | TN | FP | FN | TP |
-|---:|---:|---:|---:|
+| ---: | ---: | ---: | ---: |
 | 19,911 | 2,587 | 1,020 | 667 |
 
 ## 7. Interpretation

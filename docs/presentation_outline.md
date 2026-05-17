@@ -28,7 +28,7 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 ## Slide 5: Anti-Leakage Temporal Design
 
 | Split | History Window | Label Window |
-|---|---|---|
+| --- | --- | --- |
 | Train | <= 2015-12-31 | 2016-01-01 to 2016-06-30 |
 | Validation | <= 2016-06-30 | 2016-07-01 to 2016-12-31 |
 | Test | <= 2016-12-31 | 2017-01-01 to 2017-04-30 |
@@ -54,7 +54,7 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 ## Slide 8: Main Result
 
 | Feature Set | Model | Test PR-AUC | ROC-AUC | F1 |
-|---|---|---:|---:|---:|
+| --- | --- | ---: | ---: | ---: |
 | hybrid | Logistic Regression | 0.1840 | 0.7569 | 0.2700 |
 | graph_only | Historical negative ratio | 0.1237 | 0.6328 | 0.2327 |
 | hybrid | Dummy prior | 0.0698 | 0.5000 | 0.1304 |

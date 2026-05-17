@@ -1,6 +1,6 @@
 # Latest Pipeline Run Summary
 
-Last verified run: 2026-05-16 using the repository `.venv` kernel after adding clustering/community features, additional ablations, XGBoost/LightGBM comparisons, and PR/ROC curves.
+Last verified run: 2026-05-17 using the repository `.venv` kernel after refactoring notebook figures to display inline before saving, adding community/network visualizations, and verifying XGBoost/LightGBM comparisons.
 
 ## Data Preparation
 
@@ -73,4 +73,16 @@ The exported `phase3_model_metrics.csv` contains 41 rows across six feature sets
 - `data/processed/phase3/phase3_model_metrics.csv`
 - `data/processed/phase3/phase3_feature_importance.csv`
 - `data/processed/phase3/phase3_prediction_scores.csv`
-- `reports/figures/*.png`
+- `reports/figures/label_distribution.png`
+- `reports/figures/monthly_negative_ratio.png`
+- `reports/figures/top_negative_sources.png`
+- `reports/figures/top_negative_targets.png`
+- `reports/figures/degree_distribution.png`
+- `reports/figures/community_negative_ratio.png`
+- `reports/figures/community_network_sample.png`
+- `reports/figures/community_pair_negative_heatmap.png`
+- `reports/figures/model_comparison_pr_auc.png`
+- `reports/figures/precision_recall_curve.png`
+- `reports/figures/roc_curve.png`
+- `reports/figures/best_confusion_matrix.png`
+- `reports/figures/feature_importance_top20.png`

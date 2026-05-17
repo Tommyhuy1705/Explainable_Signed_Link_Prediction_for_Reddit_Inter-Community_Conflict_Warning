@@ -30,7 +30,7 @@ The target `negative_label` is defined at the source-target pair level: it equal
 - `data/processed/phase3/phase3_model_metrics.csv`
 - `data/processed/phase3/phase3_feature_importance.csv`
 - `data/processed/phase3/phase3_prediction_scores.csv`
-- Report figures in `reports/figures/`
+- Report figures in `reports/figures/`, displayed inline in the modeling notebook before being saved
 
 ## Reporting Guidance
 

@@ -54,6 +54,9 @@ Include:
 - Label distribution figure.
 - Monthly negative-ratio figure.
 - Top negative sources and targets.
+- Community-level negative-ratio figure.
+- Community-pair negative-ratio heatmap.
+- Readable subreddit network sample colored by detected community.
 
 ## 4. Problem Formulation
 
@@ -164,6 +167,7 @@ Include:
 - Precision-recall and ROC curves.
 - Best-model confusion matrix.
 - Feature-importance plot.
+- Short interpretation of the community/network figures.
 
 Discuss:
 

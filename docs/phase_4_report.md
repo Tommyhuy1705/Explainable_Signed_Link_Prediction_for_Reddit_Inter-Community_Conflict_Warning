@@ -16,6 +16,9 @@
 - Top negative source subreddits.
 - Top negative target subreddits.
 - Directed degree distribution.
+- Community-level negative ratio.
+- Readable subreddit network sample colored by detected community.
+- Community-pair negative-ratio heatmap.
 - Model comparison by test PR-AUC.
 - Precision-recall curve.
 - ROC curve.

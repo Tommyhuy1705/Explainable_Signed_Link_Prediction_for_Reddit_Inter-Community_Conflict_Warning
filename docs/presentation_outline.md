@@ -41,7 +41,14 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 - Structural balance: signed local-neighborhood patterns.
 - Text properties: 86 SNAP text-property features.
 
-## Slide 7: Models and Baselines
+## Slide 7: Network and Community Evidence
+
+- Show the readable subreddit network sample colored by detected community.
+- Show the community-level negative-ratio chart.
+- Show the community-pair negative-ratio heatmap.
+- Message: the project is not only a classifier; it first analyzes the signed social network structure.
+
+## Slide 8: Models and Baselines
 
 - Dummy most frequent.
 - Dummy prior.
@@ -51,7 +58,7 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 - XGBoost.
 - LightGBM.
 
-## Slide 8: Main Result
+## Slide 9: Main Result
 
 | Feature Set | Model | Test PR-AUC | ROC-AUC | F1 |
 | --- | --- | ---: | ---: | ---: |
@@ -59,20 +66,20 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 | graph_only | Historical negative ratio | 0.1237 | 0.6328 | 0.2327 |
 | hybrid | Dummy prior | 0.0698 | 0.5000 | 0.1304 |
 
-## Slide 9: Interpretation
+## Slide 10: Interpretation
 
 - The best model combines graph/history and text-property features.
 - Graph-only models are close to hybrid, so network structure is a strong signal.
 - Text-only models are weaker, but text properties help inside the hybrid model.
 - Structural balance is useful for explanation, but its predictive gain is small.
 
-## Slide 10: Limitations and Future Work
+## Slide 11: Limitations and Future Work
 
 - `LINK_SENTIMENT` is a proxy label, not direct proof of real-world conflict.
 - K-core filtering restricts the analysis to a denser graph.
 - The current task focuses on observed source-target relationships.
 - Future work: signed graph embeddings, temporal GNNs, SHAP explanations, robustness to label noise.
 
-## Slide 11: Closing Message
+## Slide 12: Closing Message
 
 Temporal signed-network features provide practical signals for predicting future negative-dominant relationships between Reddit communities.

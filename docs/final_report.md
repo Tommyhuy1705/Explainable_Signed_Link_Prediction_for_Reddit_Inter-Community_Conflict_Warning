@@ -52,6 +52,8 @@ The main feature groups are:
 | Structural balance | common neighbors, signed triad-pattern counts |
 | Text properties | `text_property_00` to `text_property_85`, title/body source indicators |
 
+The reporting notebook also visualizes the social-network structure directly through a readable subreddit network sample, a community-level negative-ratio chart, and a community-pair negative-ratio heatmap. These figures make the network-analysis component visible before the predictive modeling results.
+
 The strict temporal split is:
 
 | Split | History Window | Label Window | Rows |
@@ -111,6 +113,8 @@ The best model's test confusion counts are:
 | TN | FP | FN | TP |
 | ---: | ---: | ---: | ---: |
 | 19,911 | 2,587 | 1,020 | 667 |
+
+The report figures include exploratory plots, community/network plots, model-comparison plots, precision-recall and ROC curves, the best-model confusion matrix, and feature importance. The community figures are used to interpret where negative-link concentration appears in the detected subreddit structure, while the model figures evaluate whether those historical signals support future negative-dominant relationship prediction.
 
 ## 7. Interpretation
 

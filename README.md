@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This repository contains a paper-style final project for the Social Media Data Analysis course. The project studies how Reddit communities link to each other and predicts whether future cross-community hyperlinks are likely to be negative using temporal signed-network features.
+This repository contains a paper-style final project for the Social Media Data Analysis course. The project studies how Reddit communities link to each other and predicts whether a future source-target subreddit relationship becomes negative-dominant using temporal signed-network features.
 
 Recommended project title:
 
@@ -15,7 +15,7 @@ The course-project scope is **negative hyperlink prediction**. The longer-term r
 1. Which subreddits are major sources and targets of negative cross-community hyperlinks?
 2. Do signed network features improve prediction compared with text-only features?
 3. Does a hybrid model that combines text, graph, and temporal history outperform simple baselines?
-4. Which historical features explain future negative inter-community interactions?
+4. Which historical features explain future negative-dominant inter-community relationships?
 
 ## Dataset
 
@@ -60,6 +60,7 @@ The implemented workflow has four phases:
 3. **Strict temporal modeling**
    - Train features are computed only from interactions before the history cutoff.
    - Labels are computed from a disjoint future window.
+   - A pair is labeled negative when future negative hyperlinks outnumber future positive/neutral hyperlinks in that window.
    - Models are compared using graph-only, text-only, and hybrid feature sets.
    - Ablations include no-balance graph/hybrid settings and a history-only feature set.
    - Baselines include dummy prior and historical negative-ratio heuristics.
@@ -87,9 +88,19 @@ Because negative links are a minority class, accuracy is not the main metric. Th
 - Balanced accuracy
 - Confusion matrix
 
+## Latest Verified Result
+
+The latest verified `.venv` run is summarized in `docs/run_summary.md`. The exported metrics include 41 model/feature-set rows across Logistic Regression, Random Forest, XGBoost, LightGBM, dummy baselines, and a historical negative-ratio heuristic.
+
+Best test result by PR-AUC:
+
+| Feature Set | Model | Test PR-AUC | Test ROC-AUC | Test F1 | Precision | Recall |
+|---|---|---:|---:|---:|---:|---:|
+| hybrid | Logistic Regression | 0.1840 | 0.7569 | 0.2700 | 0.2050 | 0.3954 |
+
 ## Installation
 
-Recommended Python version: 3.11 or 3.12. Some ML libraries may not yet provide stable wheels for the newest Python releases.
+Verified local environment: the repository `.venv` currently runs with Python 3.14 and the dependencies in `requirements.txt` installed. If recreating the environment from scratch on another machine, Python 3.11 or 3.12 is still a conservative choice because ML library wheels are usually most stable there.
 
 ```bash
 python -m venv .venv

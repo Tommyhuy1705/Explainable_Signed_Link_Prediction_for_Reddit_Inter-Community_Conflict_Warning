@@ -38,6 +38,8 @@ The body and title files are concatenated, not joined by `POST_ID`. A new column
 
 The course-project task is:
 
-> Predict whether a future source-target subreddit relationship becomes negative using historical signed-network and text-property features.
+> Predict whether a future source-target subreddit relationship becomes negative-dominant using historical signed-network and text-property features.
+
+In the temporal modeling stage, a future relationship is labeled negative when the number of negative hyperlinks in the label window is greater than the number of positive/neutral hyperlinks for the same source-target pair. This is stricter than labeling a pair negative after a single negative hyperlink.
 
 The report should describe `LINK_SENTIMENT` as a derived proxy label, not as direct ground truth for real-world conflict.

@@ -2,7 +2,7 @@
 
 ## 1. Why is this a social media data analysis project?
 
-The data comes from Reddit, a social media platform organized into communities. We model subreddits as nodes and hyperlinks between subreddits as directed signed edges, then analyze centrality, reciprocity, structural balance, and future negative interactions.
+The data comes from Reddit, a social media platform organized into communities. We model subreddits as nodes and hyperlinks between subreddits as directed signed edges, then analyze centrality, reciprocity, structural balance, and future negative-dominant relationships.
 
 ## 2. Why not use accuracy as the main metric?
 
@@ -32,7 +32,7 @@ It is a strong intuitive baseline: if a source-target pair was negative before, 
 
 ## 8. What does structural balance contribute?
 
-Structural balance captures signed local-neighborhood patterns. For example, if two communities share many neighbors with certain positive/negative relationships, those triadic patterns may indicate whether future interaction is likely to be negative.
+Structural balance captures signed local-neighborhood patterns. For example, if two communities share many neighbors with certain positive/negative relationships, those triadic patterns may indicate whether their future relationship is likely to become negative-dominant.
 
 ## 9. Why is this not full conflict detection?
 

@@ -14,10 +14,10 @@
 
 - `notebooks/01_data_exploration.ipynb`
 - `data/interim/phase1_combined_clean.csv`
-- `data/processed/phase1_kcore_filtered.csv`
-- `data/processed/phase1_train.csv`
-- `data/processed/phase1_validation.csv`
-- `data/processed/phase1_test.csv`
+- `data/processed/phase1/phase1_kcore_filtered.csv`
+- `data/processed/phase1/phase1_train.csv`
+- `data/processed/phase1/phase1_validation.csv`
+- `data/processed/phase1/phase1_test.csv`
 
 ## Notes for the Report
 

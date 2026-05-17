@@ -20,7 +20,7 @@ Suggested contribution claims:
 1. A temporal signed-network analysis of Reddit inter-community hyperlinks.
 2. A leakage-aware prediction protocol using historical features and future labels.
 3. A comparison of graph-only, text-only, and hybrid feature sets.
-4. An interpretable feature-importance analysis of future negative interactions.
+4. An interpretable feature-importance analysis of future negative-dominant relationships.
 
 ## 2. Related Work
 
@@ -67,6 +67,12 @@ Represent the data as a temporal signed directed multigraph:
 Prediction task:
 
 Given interactions up to history cutoff `t`, predict whether a source-target pair has a negative-dominant interaction in the future label window.
+
+Operational label definition:
+
+- `negative_label = 1` if `future_negative_count > future_positive_count`.
+- `negative_label = 0` otherwise.
+- This is a stricter relationship-level target than "at least one negative hyperlink."
 
 ## 5. Methodology
 
@@ -185,8 +191,8 @@ Interpret the model:
 
 Conclusion:
 
-- Signed temporal network features provide useful signals for negative cross-community hyperlink prediction.
-- The hybrid model and ablation study support the value of combining network history, signed structure, and text properties.
+- Signed temporal network features provide useful signals for negative-dominant cross-community relationship prediction.
+- The model comparison and ablation study evaluate the relative value of network history, signed structure, and text properties.
 
 Future work:
 

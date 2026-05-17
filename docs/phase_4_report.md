@@ -2,12 +2,12 @@
 
 ## Checklist
 
-- [ ] Complete the paper-style report.
-- [ ] Export and polish all report figures.
-- [ ] Include model-comparison and ablation tables.
-- [ ] Add limitations about proxy labels, historical data, and k-core filtering.
-- [ ] Prepare presentation slides.
-- [ ] Prepare Q&A answers for leakage, class imbalance, baselines, and real-world validity.
+- [x] Complete a paper-style report draft in `docs/final_report.md`.
+- [x] Export and polish all report figures in `reports/figures/`.
+- [x] Include model-comparison and ablation tables.
+- [x] Add limitations about proxy labels, historical data, and k-core filtering.
+- [x] Prepare a presentation outline in `docs/presentation_outline.md`.
+- [x] Prepare Q&A answers for leakage, class imbalance, baselines, and real-world validity in `docs/presentation_qna.md`.
 
 ## Required Figures
 
@@ -39,4 +39,4 @@
 
 ## Key Message
 
-The final report should frame the project as negative cross-community hyperlink prediction. The stronger conflict-warning framing belongs in the future-work section.
+The final report should frame the project as negative-dominant cross-community relationship prediction. The stronger conflict-warning framing belongs in the future-work section.

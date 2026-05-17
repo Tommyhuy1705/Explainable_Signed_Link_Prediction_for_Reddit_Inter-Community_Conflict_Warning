@@ -16,6 +16,8 @@
 
 Features are computed only from interactions before a history cutoff. Labels are computed from a disjoint future window.
 
+The target `negative_label` is defined at the source-target pair level: it equals `1` when future negative hyperlinks outnumber future positive/neutral hyperlinks in the label window, and `0` otherwise. This makes the task negative-dominant relationship prediction rather than one-off negative-edge detection.
+
 | Split | History Window | Label Window |
 |---|---|---|
 | Train | <= 2015-12-31 | 2016-01-01 to 2016-06-30 |
@@ -33,3 +35,10 @@ Features are computed only from interactions before a history cutoff. Labels are
 ## Reporting Guidance
 
 Accuracy should not be the headline metric because negative interactions are rare. The main comparison should use PR-AUC and F1 for the negative class, with ROC-AUC as a supporting metric.
+
+Latest verified run:
+
+- Execution environment: repository `.venv`.
+- Metric rows: 41.
+- Models in metrics: dummy most frequent, dummy prior, historical negative-ratio heuristic, Logistic Regression, Random Forest, XGBoost, LightGBM.
+- Best model by test PR-AUC: `hybrid` + `logistic_regression`.

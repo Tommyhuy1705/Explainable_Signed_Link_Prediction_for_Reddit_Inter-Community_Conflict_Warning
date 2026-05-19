@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
+from matplotlib.ticker import PercentFormatter
 import networkx as nx
 import numpy as np
 import pandas as pd
@@ -12,13 +16,50 @@ import seaborn as sns
 from sklearn.metrics import auc, precision_recall_curve, roc_curve
 
 
-FIGURE_DPI = 180
+FIGURE_DPI = 200
 PALETTE = {
-    "positive": "#4C78A8",
-    "negative": "#E45756",
-    "neutral": "#72B7B2",
-    "text": "#333333",
+    "positive": "#2F5D8C",
+    "negative": "#C84C4C",
+    "negative_dark": "#8F1D2C",
+    "neutral": "#5F9EA0",
+    "muted": "#A7B0BA",
+    "grid": "#E6E8EB",
+    "text": "#222222",
 }
+MODEL_COLORS = {
+    "logistic_regression": "#2F5D8C",
+    "lightgbm": "#3D8B5B",
+    "xgboost": "#D28B26",
+    "random_forest": "#5F9EA0",
+    "historical_negative_ratio": "#7A7A7A",
+    "dummy_prior": "#B7BDC5",
+    "dummy_most_frequent": "#D0D4DA",
+}
+FEATURE_COLORS = {
+    "Text": "#8E6C8A",
+    "Pair history": "#D28B26",
+    "Node/network": "#2F5D8C",
+    "Community": "#3D8B5B",
+    "Structural balance": "#B85C38",
+    "Other": "#8B949E",
+}
+
+sns.set_theme(
+    style="whitegrid",
+    context="notebook",
+    rc={
+        "axes.edgecolor": "#D7DADE",
+        "axes.labelcolor": PALETTE["text"],
+        "axes.titleweight": "bold",
+        "axes.titlesize": 14,
+        "figure.facecolor": "white",
+        "font.family": "DejaVu Sans",
+        "grid.color": PALETTE["grid"],
+        "grid.linewidth": 0.8,
+        "legend.frameon": True,
+        "legend.framealpha": 0.95,
+    },
+)
 
 
 def _prepare_output_dir(output_dir: str | Path | None) -> Path | None:
@@ -40,12 +81,7 @@ def _display_figure(fig) -> None:
 
 
 def _finalize_figure(fig, path: Path | None = None, *, show: bool = False) -> Path | None:
-    """Optionally display, save, and close a figure.
-
-    The figure is displayed before saving so notebook readers see the plot at
-    the exact point where it is created, while the same figure object is still
-    saved for the report.
-    """
+    """Optionally display, save, and close a figure."""
     fig.tight_layout()
     if show:
         _display_figure(fig)
@@ -60,18 +96,116 @@ def _output_path(output_dir: str | Path | None, filename: str) -> Path | None:
     return output_path / filename if output_path is not None else None
 
 
+def _despine(ax) -> None:
+    sns.despine(ax=ax, left=False, bottom=False)
+    ax.grid(axis="y", color=PALETTE["grid"], linewidth=0.8)
+    ax.set_axisbelow(True)
+
+
+def _format_count(value: float) -> str:
+    return f"{int(round(value)):,}"
+
+
+def _model_display_name(model: str) -> str:
+    names = {
+        "dummy_most_frequent": "Dummy frequent",
+        "dummy_prior": "Dummy prior",
+        "historical_negative_ratio": "Historical ratio",
+        "logistic_regression": "Logistic regression",
+        "random_forest": "Random forest",
+        "xgboost": "XGBoost",
+        "lightgbm": "LightGBM",
+    }
+    return names.get(model, model.replace("_", " ").title())
+
+
+def _feature_set_display_name(feature_set: str) -> str:
+    names = {
+        "history_only": "History only",
+        "text_only": "Text only",
+        "graph_only": "Graph only",
+        "graph_no_balance": "Graph no balance",
+        "hybrid": "Hybrid",
+        "hybrid_no_balance": "Hybrid no balance",
+    }
+    return names.get(feature_set, feature_set.replace("_", " ").title())
+
+
+def _model_label(feature_set: str, model: str) -> str:
+    return f"{_feature_set_display_name(feature_set)} | {_model_display_name(model)}"
+
+
+def _feature_category(feature: str) -> str:
+    if feature.startswith("text_property_") or feature.startswith("link_location_") or feature == "text_feature_count":
+        return "Text"
+    if feature in {"interaction_count", "positive_count", "negative_count", "negative_ratio", "sentiment_balance", "reciprocal_edge"}:
+        return "Pair history"
+    if "community" in feature or "clustering" in feature:
+        return "Community"
+    if feature.startswith("balance_") or feature == "common_neighbors":
+        return "Structural balance"
+    if any(token in feature for token in ["degree", "pagerank", "betweenness", "reciprocity"]):
+        return "Node/network"
+    return "Other"
+
+
+def _feature_display_name(feature: str) -> str:
+    if feature.startswith("text_property_"):
+        return f"{feature} (SNAP text)"
+    if feature.startswith("link_location_"):
+        return feature.replace("link_location_", "link location: ")
+    return feature.replace("_", " ")
+
+
+def _community_size_map(node_features: pd.DataFrame) -> dict[int, int]:
+    return node_features["community_id"].value_counts().astype(int).to_dict()
+
+
+def _community_labels(node_features: pd.DataFrame, community_ids: list[int]) -> list[str]:
+    sizes = _community_size_map(node_features)
+    return [f"C{community}\nn={sizes.get(community, 0):,}" for community in community_ids]
+
+
 def plot_label_distribution(frame: pd.DataFrame, output_dir: str | Path | None = None, *, show: bool = False) -> Path | None:
     """Plot positive/neutral versus negative hyperlink counts."""
-    label_counts = frame["link_sentiment"].map({1: "positive/neutral", -1: "negative"}).value_counts()
-    colors = [PALETTE["negative"] if label == "negative" else PALETTE["positive"] for label in label_counts.index]
+    labels = frame["link_sentiment"].map({1: "positive/neutral", -1: "negative"})
+    label_counts = labels.value_counts().reindex(["positive/neutral", "negative"]).fillna(0).astype(int)
+    total = int(label_counts.sum())
+    percentages = label_counts / max(total, 1)
 
-    fig, ax = plt.subplots(figsize=(7, 4))
-    sns.barplot(x=label_counts.index, y=label_counts.values, hue=label_counts.index, palette=colors, legend=False, ax=ax)
-    ax.set_title("Distribution of Reddit hyperlink sentiment labels")
-    ax.set_xlabel("Label")
+    fig, ax = plt.subplots(figsize=(7.5, 4.8))
+    colors = [PALETTE["positive"], PALETTE["negative"]]
+    bars = ax.bar(label_counts.index, label_counts.values, color=colors, width=0.56)
+    ax.set_title("Sentiment label distribution")
+    ax.set_xlabel("")
     ax.set_ylabel("Number of hyperlinks")
-    for index, value in enumerate(label_counts.values):
-        ax.text(index, value, f"{value:,}", ha="center", va="bottom", fontsize=9)
+    ax.set_ylim(0, label_counts.max() * 1.18)
+    ax.yaxis.set_major_formatter(lambda value, _: f"{int(value / 1000):,}K")
+    ax.grid(axis="x", visible=False)
+
+    for bar, count, percentage in zip(bars, label_counts.values, percentages.values):
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() + label_counts.max() * 0.025,
+            f"{count:,}\n({percentage:.1%})",
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            fontweight="bold",
+            color=PALETTE["text"],
+        )
+    ax.text(
+        0.98,
+        0.88,
+        "Class imbalance is substantial,\nso PR-AUC is the main metric.",
+        transform=ax.transAxes,
+        ha="right",
+        va="top",
+        fontsize=9,
+        color="#4A4A4A",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "#F5F6F7", "edgecolor": "#D7DADE"},
+    )
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "label_distribution.png"), show=show)
 
@@ -81,19 +215,49 @@ def plot_monthly_negative_ratio(frame: pd.DataFrame, output_dir: str | Path | No
     dated = frame.copy()
     dated["timestamp"] = pd.to_datetime(dated["timestamp"], errors="coerce")
     dated = dated.dropna(subset=["timestamp"])
-    dated["month"] = dated["timestamp"].dt.to_period("M").astype(str)
-    monthly = dated.groupby("month")["link_sentiment"].agg(
-        total="size",
-        negative=lambda values: int((values == -1).sum()),
-    ).reset_index()
+    dated["month"] = dated["timestamp"].dt.to_period("M").dt.to_timestamp()
+    monthly = (
+        dated.groupby("month")["link_sentiment"]
+        .agg(total="size", negative=lambda values: int((values == -1).sum()))
+        .reset_index()
+        .sort_values("month")
+    )
     monthly["negative_ratio"] = monthly["negative"] / monthly["total"].clip(lower=1)
+    monthly["rolling_ratio"] = monthly["negative_ratio"].rolling(3, min_periods=1).mean()
+    average_ratio = monthly["negative_ratio"].mean()
 
-    fig, ax = plt.subplots(figsize=(10, 4))
-    sns.lineplot(data=monthly, x="month", y="negative_ratio", marker="o", color=PALETTE["negative"], ax=ax)
-    ax.set_title("Monthly negative hyperlink ratio")
+    fig, ax = plt.subplots(figsize=(10.5, 4.6))
+    ax.plot(monthly["month"], monthly["negative_ratio"], color=PALETTE["negative"], alpha=0.35, linewidth=1.2, marker="o", markersize=3)
+    ax.plot(monthly["month"], monthly["rolling_ratio"], color=PALETTE["negative_dark"], linewidth=2.5, label="3-month rolling average")
+    ax.axhline(average_ratio, color="#6B7280", linestyle="--", linewidth=1.2, label=f"mean={average_ratio:.1%}")
+    y_top = monthly["negative_ratio"].max() + 0.002
+    for cutoff, label in [
+        (pd.Timestamp("2015-12-31"), "train cutoff"),
+        (pd.Timestamp("2016-06-30"), "validation cutoff"),
+        (pd.Timestamp("2016-12-31"), "test cutoff"),
+    ]:
+        ax.axvline(cutoff, color="#B8BEC6", linestyle=":", linewidth=1.0)
+        ax.annotate(
+            label,
+            xy=(cutoff, y_top),
+            xytext=(0, 8),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=7.3,
+            color="#5A5F66",
+            bbox={"boxstyle": "round,pad=0.18", "facecolor": "white", "edgecolor": "#D7DADE", "alpha": 0.92},
+        )
+    ax.set_title("Monthly negative hyperlink ratio over time")
     ax.set_xlabel("Month")
     ax.set_ylabel("Negative ratio")
-    ax.tick_params(axis="x", rotation=60, labelsize=7)
+    ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    ax.xaxis.set_major_locator(mdates.MonthLocator(interval=4))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y-%m"))
+    ax.tick_params(axis="x", rotation=35, labelsize=8)
+    ax.legend(loc="upper left", fontsize=8)
+    ax.set_ylim(monthly["negative_ratio"].min() - 0.002, y_top + 0.006)
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "monthly_negative_ratio.png"), show=show)
 
@@ -107,38 +271,70 @@ def plot_top_negative_subreddits(
 ) -> list[Path | None]:
     """Plot top source and target subreddits by negative hyperlink count."""
     negative_frame = frame[frame["link_sentiment"] == -1]
+    total_negative = max(len(negative_frame), 1)
     paths: list[Path | None] = []
     for column, label, filename in [
         ("source_subreddit", "Source subreddit", "top_negative_sources.png"),
         ("target_subreddit", "Target subreddit", "top_negative_targets.png"),
     ]:
         counts = negative_frame[column].value_counts().head(top_n).sort_values()
-        fig, ax = plt.subplots(figsize=(8, 5))
-        sns.barplot(x=counts.values, y=counts.index, color=PALETTE["negative"], ax=ax)
-        ax.set_title(f"Top {top_n} {label.lower()}s by negative links")
+        colors = [PALETTE["negative_dark"] if value == counts.max() else PALETTE["negative"] for value in counts.values]
+        fig, ax = plt.subplots(figsize=(8.8, max(5.2, 0.35 * len(counts))))
+        bars = ax.barh(counts.index, counts.values, color=colors, alpha=0.92)
+        ax.set_title(f"Top {top_n} {label.lower()}s by negative hyperlinks")
         ax.set_xlabel("Negative hyperlink count")
-        ax.set_ylabel(label)
+        ax.set_ylabel("")
+        ax.set_xlim(0, counts.max() * 1.18)
+        ax.xaxis.set_major_formatter(lambda value, _: f"{int(value):,}")
+        for bar, value in zip(bars, counts.values):
+            ax.text(
+                value + counts.max() * 0.015,
+                bar.get_y() + bar.get_height() / 2,
+                f"{value:,} ({value / total_negative:.1%})",
+                va="center",
+                fontsize=8.5,
+                color=PALETTE["text"],
+            )
+        _despine(ax)
         paths.append(_finalize_figure(fig, _output_path(output_dir, filename), show=show))
     return paths
 
 
+def _ccdf(values: pd.Series) -> tuple[np.ndarray, np.ndarray]:
+    cleaned = np.sort(pd.to_numeric(values, errors="coerce").dropna().to_numpy(dtype=float))
+    cleaned = cleaned[cleaned > 0]
+    if cleaned.size == 0:
+        return np.array([]), np.array([])
+    probabilities = (cleaned.size - np.arange(cleaned.size)) / cleaned.size
+    return cleaned, probabilities
+
+
 def plot_degree_distribution(frame: pd.DataFrame, output_dir: str | Path | None = None, *, show: bool = False) -> Path | None:
-    """Plot source and target degree distributions on a log scale."""
+    """Plot source and target degree CCDFs on a log-log scale."""
     out_degree = frame.groupby("source_subreddit")["target_subreddit"].nunique()
     in_degree = frame.groupby("target_subreddit")["source_subreddit"].nunique()
-    degree_frame = pd.concat(
-        [
-            pd.DataFrame({"degree": out_degree, "type": "out-degree"}),
-            pd.DataFrame({"degree": in_degree, "type": "in-degree"}),
-        ],
-        ignore_index=True,
-    )
+    out_x, out_y = _ccdf(out_degree)
+    in_x, in_y = _ccdf(in_degree)
 
-    fig, ax = plt.subplots(figsize=(8, 4))
-    sns.histplot(data=degree_frame, x="degree", hue="type", bins=60, log_scale=(True, True), element="step", ax=ax)
-    ax.set_title("Directed subreddit degree distribution")
+    fig, ax = plt.subplots(figsize=(8.2, 5.0))
+    ax.step(out_x, out_y, where="post", color=PALETTE["positive"], linewidth=2.0, label="Out-degree")
+    ax.step(in_x, in_y, where="post", color="#D28B26", linewidth=2.0, label="In-degree")
+    ax.set_xscale("log")
+    ax.set_yscale("log")
+    ax.set_title("Heavy-tailed directed subreddit degree distribution")
     ax.set_xlabel("Degree")
-    ax.set_ylabel("Number of subreddits")
+    ax.set_ylabel("Share of subreddits with degree >= x")
+    ax.legend(loc="upper right", fontsize=9)
+    ax.text(
+        0.04,
+        0.08,
+        "A small number of subreddits\nreceive or create many links.",
+        transform=ax.transAxes,
+        fontsize=9,
+        color="#4A4A4A",
+        bbox={"boxstyle": "round,pad=0.35", "facecolor": "#F5F6F7", "edgecolor": "#D7DADE"},
+    )
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "degree_distribution.png"), show=show)
 
@@ -146,31 +342,83 @@ def plot_degree_distribution(frame: pd.DataFrame, output_dir: str | Path | None 
 def plot_model_comparison(metrics_frame: pd.DataFrame, output_dir: str | Path | None = None, *, show: bool = False) -> Path | None:
     """Plot test PR-AUC for the strongest model and feature-set combinations."""
     plot_frame = metrics_frame.copy()
-    plot_frame["model_label"] = plot_frame["feature_set"] + " | " + plot_frame["model"]
-    plot_frame = plot_frame.sort_values("test_pr_auc", ascending=True).tail(20)
+    plot_frame["model_label"] = [_model_label(row.feature_set, row.model) for row in plot_frame.itertuples(index=False)]
+    plot_frame = plot_frame.sort_values("test_pr_auc", ascending=True).tail(20).reset_index(drop=True)
+    best_index = int(plot_frame["test_pr_auc"].idxmax())
+    colors = [
+        PALETTE["negative_dark"] if index == best_index else MODEL_COLORS.get(model, PALETTE["muted"])
+        for index, model in enumerate(plot_frame["model"])
+    ]
 
-    fig, ax = plt.subplots(figsize=(9, max(5, 0.35 * len(plot_frame))))
-    sns.barplot(data=plot_frame, x="test_pr_auc", y="model_label", color=PALETTE["positive"], ax=ax)
-    ax.set_title("Model comparison on strict temporal test set")
+    fig, ax = plt.subplots(figsize=(10.4, max(6.0, 0.36 * len(plot_frame))))
+    bars = ax.barh(plot_frame["model_label"], plot_frame["test_pr_auc"], color=colors, alpha=0.95)
+    baseline = metrics_frame[metrics_frame["model"] == "dummy_prior"]["test_pr_auc"].max()
+    if pd.notna(baseline):
+        ax.axvline(baseline, color="#6B7280", linestyle="--", linewidth=1.2)
+        ax.text(baseline, len(plot_frame) - 0.35, "dummy prior", rotation=90, va="top", ha="right", fontsize=8, color="#6B7280")
+    ax.set_title("Model comparison by test PR-AUC")
     ax.set_xlabel("Test PR-AUC")
-    ax.set_ylabel("Feature set | model")
+    ax.set_ylabel("")
+    ax.set_xlim(0, plot_frame["test_pr_auc"].max() * 1.16)
+    for bar, value, index in zip(bars, plot_frame["test_pr_auc"], range(len(plot_frame))):
+        ax.text(
+            value + plot_frame["test_pr_auc"].max() * 0.012,
+            bar.get_y() + bar.get_height() / 2,
+            f"{value:.3f}",
+            va="center",
+            fontsize=8.5,
+            fontweight="bold" if index == best_index else "normal",
+        )
+    handles = [
+        Patch(facecolor=PALETTE["negative_dark"], label="Best model"),
+        Patch(facecolor=MODEL_COLORS["logistic_regression"], label="Logistic regression"),
+        Patch(facecolor=MODEL_COLORS["lightgbm"], label="LightGBM"),
+        Patch(facecolor=MODEL_COLORS["xgboost"], label="XGBoost"),
+        Patch(facecolor=MODEL_COLORS["random_forest"], label="Random forest"),
+    ]
+    ax.legend(handles=handles, loc="lower right", fontsize=8)
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "model_comparison_pr_auc.png"), show=show)
 
 
 def plot_best_confusion_matrix(metrics_frame: pd.DataFrame, output_dir: str | Path | None = None, *, show: bool = False) -> Path | None:
-    """Plot the test confusion matrix for the best PR-AUC model."""
+    """Plot the row-normalized test confusion matrix for the best PR-AUC model."""
     best = metrics_frame.sort_values(["test_pr_auc", "test_f1"], ascending=False).iloc[0]
-    matrix = [
-        [int(best["test_tn"]), int(best["test_fp"])],
-        [int(best["test_fn"]), int(best["test_tp"])],
-    ]
+    matrix = np.array(
+        [
+            [int(best["test_tn"]), int(best["test_fp"])],
+            [int(best["test_fn"]), int(best["test_tp"])],
+        ],
+        dtype=float,
+    )
+    row_sums = matrix.sum(axis=1, keepdims=True).clip(min=1)
+    normalized = matrix / row_sums
+    annotations = np.empty_like(matrix, dtype=object)
+    for row in range(matrix.shape[0]):
+        for col in range(matrix.shape[1]):
+            annotations[row, col] = f"{int(matrix[row, col]):,}\n{normalized[row, col]:.1%}"
 
-    fig, ax = plt.subplots(figsize=(5, 4))
-    sns.heatmap(matrix, annot=True, fmt="d", cmap="Blues", xticklabels=["Pred 0", "Pred 1"], yticklabels=["True 0", "True 1"], ax=ax)
-    ax.set_title(f"Best model confusion matrix: {best['feature_set']} | {best['model']}")
-    ax.set_xlabel("Predicted label")
-    ax.set_ylabel("True label")
+    fig, ax = plt.subplots(figsize=(6.6, 5.2))
+    sns.heatmap(
+        normalized,
+        annot=annotations,
+        fmt="",
+        cmap="Blues",
+        vmin=0,
+        vmax=1,
+        xticklabels=["Predicted\nnon-negative", "Predicted\nnegative"],
+        yticklabels=["Actual\nnon-negative", "Actual\nnegative"],
+        cbar_kws={"label": "Row share"},
+        linewidths=1.2,
+        linecolor="white",
+        ax=ax,
+    )
+    colorbar = ax.collections[0].colorbar
+    colorbar.ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    ax.set_title(f"Best model confusion matrix\n{_feature_set_display_name(best['feature_set'])} | {_model_display_name(best['model'])}")
+    ax.set_xlabel("")
+    ax.set_ylabel("")
 
     return _finalize_figure(fig, _output_path(output_dir, "best_confusion_matrix.png"), show=show)
 
@@ -191,25 +439,38 @@ def plot_feature_importance(
     if ranked_models.empty:
         raise ValueError("No fitted model with feature importances is available.")
     best = ranked_models.iloc[0]
-    filtered = importance_frame[
-        (importance_frame["feature_set"] == best["feature_set"])
-        & (importance_frame["model"] == best["model"])
-    ].sort_values("importance", ascending=False).head(top_n).sort_values("importance")
+    filtered = (
+        importance_frame[
+            (importance_frame["feature_set"] == best["feature_set"])
+            & (importance_frame["model"] == best["model"])
+        ]
+        .sort_values("importance", ascending=False)
+        .head(top_n)
+        .sort_values("importance")
+        .copy()
+    )
+    filtered["category"] = filtered["feature"].map(_feature_category)
+    filtered["feature_label"] = filtered["feature"].map(_feature_display_name)
+    colors = [FEATURE_COLORS.get(category, FEATURE_COLORS["Other"]) for category in filtered["category"]]
 
-    fig, ax = plt.subplots(figsize=(8, max(5, 0.3 * len(filtered))))
-    sns.barplot(data=filtered, x="importance", y="feature", color=PALETTE["neutral"], ax=ax)
-    ax.set_title(f"Top {top_n} features: {best['feature_set']} | {best['model']}")
-    ax.set_xlabel("Importance")
-    ax.set_ylabel("Feature")
+    fig, ax = plt.subplots(figsize=(10.0, max(6.2, 0.36 * len(filtered))))
+    bars = ax.barh(filtered["feature_label"], filtered["importance"], color=colors, alpha=0.95)
+    ax.set_title(f"Top {top_n} explanatory features\n{_feature_set_display_name(best['feature_set'])} | {_model_display_name(best['model'])}")
+    ax.set_xlabel("Absolute importance")
+    ax.set_ylabel("")
+    ax.set_xlim(0, filtered["importance"].max() * 1.14)
+    for bar, value in zip(bars, filtered["importance"]):
+        ax.text(value + filtered["importance"].max() * 0.012, bar.get_y() + bar.get_height() / 2, f"{value:.2f}", va="center", fontsize=8)
+    handles = [Patch(facecolor=color, label=category) for category, color in FEATURE_COLORS.items() if category in set(filtered["category"])]
+    ax.legend(handles=handles, loc="lower right", fontsize=8, title="Feature group")
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "feature_importance_top20.png"), show=show)
 
 
 def _select_curve_models(metrics_frame: pd.DataFrame, top_n: int = 5) -> pd.DataFrame:
     """Select a compact, informative set of models for curve plots."""
-    ranked = metrics_frame[
-        ~metrics_frame["model"].str.startswith("dummy")
-    ].sort_values(["test_pr_auc", "test_f1"], ascending=False)
+    ranked = metrics_frame[~metrics_frame["model"].str.startswith("dummy")].sort_values(["test_pr_auc", "test_f1"], ascending=False)
     selected = ranked.head(top_n).copy()
     historical = ranked[ranked["model"] == "historical_negative_ratio"].head(1)
     if not historical.empty:
@@ -228,22 +489,34 @@ def plot_precision_recall_curve(
     """Plot test-set precision-recall curves for top models and a heuristic baseline."""
     test_scores = score_frame[score_frame["split"] == "test"].copy()
     selected = _select_curve_models(metrics_frame, top_n=top_n)
+    best_key = tuple(selected.iloc[0][["feature_set", "model"]]) if not selected.empty else None
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(9.4, 5.4))
     for row in selected.itertuples(index=False):
         subset = test_scores[(test_scores["feature_set"] == row.feature_set) & (test_scores["model"] == row.model)]
         if subset.empty or subset["y_true"].nunique() < 2:
             continue
         precision, recall, _ = precision_recall_curve(subset["y_true"], subset["score"])
-        label = f"{row.feature_set} | {row.model} (AP={row.test_pr_auc:.3f})"
-        ax.plot(recall, precision, linewidth=1.8, label=label)
+        is_best = (row.feature_set, row.model) == best_key
+        label = f"{_feature_set_display_name(row.feature_set)} | {_model_display_name(row.model)} (AP={row.test_pr_auc:.3f})"
+        ax.plot(
+            recall,
+            precision,
+            linewidth=2.8 if is_best else 1.7,
+            alpha=1.0 if is_best else 0.72,
+            color=PALETTE["negative_dark"] if is_best else MODEL_COLORS.get(row.model, PALETTE["muted"]),
+            label=label,
+        )
 
     prevalence = test_scores["y_true"].mean() if not test_scores.empty else 0.0
-    ax.axhline(prevalence, color="gray", linestyle="--", linewidth=1.2, label=f"prevalence={prevalence:.3f}")
+    ax.axhline(prevalence, color="#6B7280", linestyle="--", linewidth=1.2, label=f"prevalence={prevalence:.3f}")
     ax.set_title("Precision-recall curves on strict temporal test set")
     ax.set_xlabel("Recall")
     ax.set_ylabel("Precision")
-    ax.legend(fontsize=8)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.03)
+    ax.legend(fontsize=8, loc="upper left", bbox_to_anchor=(1.02, 1.0), borderaxespad=0)
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "precision_recall_curve.png"), show=show)
 
@@ -259,22 +532,34 @@ def plot_roc_curve(
     """Plot test-set ROC curves for top models and a heuristic baseline."""
     test_scores = score_frame[score_frame["split"] == "test"].copy()
     selected = _select_curve_models(metrics_frame, top_n=top_n)
+    best_key = tuple(selected.iloc[0][["feature_set", "model"]]) if not selected.empty else None
 
-    fig, ax = plt.subplots(figsize=(7, 5))
+    fig, ax = plt.subplots(figsize=(9.4, 5.4))
     for row in selected.itertuples(index=False):
         subset = test_scores[(test_scores["feature_set"] == row.feature_set) & (test_scores["model"] == row.model)]
         if subset.empty or subset["y_true"].nunique() < 2:
             continue
         false_positive_rate, true_positive_rate, _ = roc_curve(subset["y_true"], subset["score"])
         roc_auc = auc(false_positive_rate, true_positive_rate)
-        label = f"{row.feature_set} | {row.model} (AUC={roc_auc:.3f})"
-        ax.plot(false_positive_rate, true_positive_rate, linewidth=1.8, label=label)
+        is_best = (row.feature_set, row.model) == best_key
+        label = f"{_feature_set_display_name(row.feature_set)} | {_model_display_name(row.model)} (AUC={roc_auc:.3f})"
+        ax.plot(
+            false_positive_rate,
+            true_positive_rate,
+            linewidth=2.8 if is_best else 1.7,
+            alpha=1.0 if is_best else 0.72,
+            color=PALETTE["negative_dark"] if is_best else MODEL_COLORS.get(row.model, PALETTE["muted"]),
+            label=label,
+        )
 
-    ax.plot([0, 1], [0, 1], color="gray", linestyle="--", linewidth=1.2, label="random")
+    ax.plot([0, 1], [0, 1], color="#6B7280", linestyle="--", linewidth=1.2, label="random")
     ax.set_title("ROC curves on strict temporal test set")
     ax.set_xlabel("False positive rate")
     ax.set_ylabel("True positive rate")
-    ax.legend(fontsize=8)
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1.03)
+    ax.legend(fontsize=8, loc="lower right")
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "roc_curve.png"), show=show)
 
@@ -304,22 +589,32 @@ def plot_community_negative_ratio(
     summary = summary[summary["community_size"] >= min_size]
     summary = summary.sort_values(["negative_ratio", "community_size"], ascending=False).head(top_n)
     summary = summary.sort_values("negative_ratio")
-    summary["label"] = summary.apply(lambda row: f"C{int(row.community_id)} (n={int(row.community_size)})", axis=1)
+    summary["label"] = summary.apply(lambda row: f"C{int(row.community_id)} (n={int(row.community_size):,})", axis=1)
 
-    fig, ax = plt.subplots(figsize=(8, max(5, 0.35 * len(summary))))
-    sns.barplot(data=summary, x="negative_ratio", y="label", color=PALETTE["negative"], ax=ax)
-    ax.set_title(f"Top {len(summary)} communities by negative-link ratio")
-    ax.set_xlabel("Average community negative ratio")
-    ax.set_ylabel("Community")
+    values = summary["negative_ratio"].to_numpy()
+    norm = (values - values.min()) / (values.max() - values.min() + 1e-9)
+    colors = [plt.get_cmap("Reds")(0.35 + 0.55 * value) for value in norm]
+
+    fig, ax = plt.subplots(figsize=(8.8, max(5.3, 0.36 * len(summary))))
+    bars = ax.barh(summary["label"], summary["negative_ratio"], color=colors)
+    ax.set_title(f"Communities with highest negative-link ratios")
+    ax.set_xlabel("Average negative hyperlink ratio")
+    ax.set_ylabel("")
+    ax.xaxis.set_major_formatter(PercentFormatter(1.0))
+    ax.set_xlim(0, summary["negative_ratio"].max() * 1.18)
+    for bar, value in zip(bars, summary["negative_ratio"]):
+        ax.text(value + summary["negative_ratio"].max() * 0.012, bar.get_y() + bar.get_height() / 2, f"{value:.1%}", va="center", fontsize=8.5)
+    ax.text(
+        0.01,
+        -0.13,
+        "Labels show detected community id and number of subreddits.",
+        transform=ax.transAxes,
+        fontsize=8.5,
+        color="#5A5F66",
+    )
+    _despine(ax)
 
     return _finalize_figure(fig, _output_path(output_dir, "community_negative_ratio.png"), show=show)
-
-
-def _top_nodes_for_network(node_features: pd.DataFrame, max_nodes: int) -> pd.DataFrame:
-    ranking_column = "pagerank" if "pagerank" in node_features.columns else "total_degree"
-    columns = ["node", "community_id", "community_size", "total_degree", "pagerank"]
-    available = [column for column in columns if column in node_features.columns]
-    return node_features[available].sort_values(ranking_column, ascending=False).head(max_nodes).copy()
 
 
 def plot_community_network_sample(
@@ -327,94 +622,154 @@ def plot_community_network_sample(
     node_features: pd.DataFrame,
     output_dir: str | Path | None = None,
     *,
-    max_nodes: int = 250,
-    max_edges: int = 700,
-    label_count: int = 20,
+    max_nodes: int = 92,
+    max_edges: int = 180,
+    label_count: int = 10,
     show: bool = False,
 ) -> Path | None:
-    """Plot a readable subreddit network sample colored by detected community."""
-    node_sample = _top_nodes_for_network(node_features, max_nodes=max_nodes)
-    sampled_nodes = set(node_sample["node"])
-    edge_frame = interactions[
-        interactions["source_subreddit"].isin(sampled_nodes)
-        & interactions["target_subreddit"].isin(sampled_nodes)
-    ].copy()
+    """Plot a readable negative-link backbone among major subreddit communities."""
+    required = {"node", "community_id", "community_size", "pagerank", "total_degree"}
+    if not required.issubset(node_features.columns):
+        raise ValueError(f"node_features must contain columns: {sorted(required)}")
+
+    community_map = node_features.set_index("node")["community_id"].astype(int).to_dict()
+    pagerank_map = node_features.set_index("node")["pagerank"].to_dict()
+    degree_map = node_features.set_index("node")["total_degree"].to_dict()
+    community_sizes = _community_size_map(node_features)
+    top_communities = set(node_features["community_id"].value_counts().head(8).index.astype(int).tolist())
+
+    edge_frame = interactions[["source_subreddit", "target_subreddit", "link_sentiment"]].copy()
+    edge_frame["source_community"] = edge_frame["source_subreddit"].map(community_map)
+    edge_frame["target_community"] = edge_frame["target_subreddit"].map(community_map)
+    edge_frame = edge_frame[
+        edge_frame["source_community"].isin(top_communities)
+        & edge_frame["target_community"].isin(top_communities)
+    ]
     edge_summary = (
         edge_frame.groupby(["source_subreddit", "target_subreddit"], dropna=False)["link_sentiment"]
         .agg(
             interaction_count="size",
-            positive_count=lambda values: int((values == 1).sum()),
             negative_count=lambda values: int((values == -1).sum()),
         )
         .reset_index()
     )
-    edge_summary["majority_sentiment"] = np.where(edge_summary["negative_count"] > edge_summary["positive_count"], -1, 1)
-    edge_summary = edge_summary.sort_values("interaction_count", ascending=False).head(max_edges)
+    edge_summary = edge_summary[edge_summary["negative_count"] > 0].copy()
+    edge_summary["negative_ratio"] = edge_summary["negative_count"] / edge_summary["interaction_count"].clip(lower=1)
+    edge_summary["source_pagerank"] = edge_summary["source_subreddit"].map(pagerank_map).fillna(0.0)
+    edge_summary["target_pagerank"] = edge_summary["target_subreddit"].map(pagerank_map).fillna(0.0)
+    edge_summary["score"] = (
+        np.log1p(edge_summary["interaction_count"])
+        * (edge_summary["source_pagerank"] + edge_summary["target_pagerank"] + 1e-8)
+        * (1 + edge_summary["negative_ratio"])
+        + 0.15 * np.log1p(edge_summary["negative_count"])
+    )
+    edge_summary = edge_summary.sort_values("score", ascending=False).head(max_edges)
 
     graph = nx.DiGraph()
-    for row in node_sample.itertuples(index=False):
-        graph.add_node(
-            row.node,
-            community_id=int(getattr(row, "community_id", -1)),
-            total_degree=float(getattr(row, "total_degree", 1.0)),
-            pagerank=float(getattr(row, "pagerank", 0.0)),
-        )
     for row in edge_summary.itertuples(index=False):
+        for node in [row.source_subreddit, row.target_subreddit]:
+            graph.add_node(
+                node,
+                community_id=int(community_map.get(node, -1)),
+                total_degree=float(degree_map.get(node, 1.0)),
+                pagerank=float(pagerank_map.get(node, 0.0)),
+            )
         graph.add_edge(
             row.source_subreddit,
             row.target_subreddit,
             weight=float(row.interaction_count),
-            majority_sentiment=int(row.majority_sentiment),
+            negative_ratio=float(row.negative_ratio),
         )
 
-    nodes = list(graph.nodes())
-    if not nodes:
+    if graph.number_of_nodes() == 0:
         fig, ax = plt.subplots(figsize=(9, 7))
-        ax.set_title("Community-colored subreddit network sample")
-        ax.text(0.5, 0.5, "No sampled nodes available", ha="center", va="center")
+        ax.set_title("Negative-link subreddit backbone")
+        ax.text(0.5, 0.5, "No sampled negative-link edges available", ha="center", va="center")
         ax.axis("off")
         return _finalize_figure(fig, _output_path(output_dir, "community_network_sample.png"), show=show)
 
+    largest_component = max(nx.weakly_connected_components(graph), key=len)
+    graph = graph.subgraph(largest_component).copy()
+    if graph.number_of_nodes() > max_nodes:
+        node_scores = {
+            node: graph.degree(node, weight="weight") + 5000 * graph.nodes[node].get("pagerank", 0.0)
+            for node in graph.nodes()
+        }
+        keep_nodes = sorted(node_scores, key=node_scores.get, reverse=True)[:max_nodes]
+        graph = graph.subgraph(keep_nodes).copy()
+        largest_component = max(nx.weakly_connected_components(graph), key=len)
+        graph = graph.subgraph(largest_component).copy()
+
+    nodes = list(graph.nodes())
     layout_graph = graph.to_undirected()
-    pos = nx.spring_layout(layout_graph, seed=42, weight="weight", iterations=80)
+    pos = nx.spring_layout(layout_graph, seed=42, weight="weight", iterations=240, k=0.78 / np.sqrt(max(graph.number_of_nodes(), 1)))
     degree_values = np.array([graph.nodes[node].get("total_degree", 1.0) for node in nodes], dtype=float)
-    if degree_values.max() > degree_values.min():
-        node_sizes = 80 + 820 * (np.log1p(degree_values) - np.log1p(degree_values).min()) / (
-            np.log1p(degree_values).max() - np.log1p(degree_values).min()
-        )
-    else:
-        node_sizes = np.full(len(nodes), 180.0)
+    log_degree = np.log1p(degree_values)
+    node_sizes = 120 + 880 * (log_degree - log_degree.min()) / (log_degree.max() - log_degree.min() + 1e-9)
 
-    community_values = [graph.nodes[node].get("community_id", -1) for node in nodes]
-    unique_communities = {community: index for index, community in enumerate(sorted(set(community_values)))}
-    node_colors = [unique_communities[value] for value in community_values]
-    cmap = plt.get_cmap("tab20", max(1, len(unique_communities)))
-    edge_colors = [
-        PALETTE["negative"] if data.get("majority_sentiment", 1) == -1 else PALETTE["positive"]
-        for _, _, data in graph.edges(data=True)
-    ]
-    edge_widths = [0.4 + min(2.2, np.log1p(data.get("weight", 1.0)) / 2) for _, _, data in graph.edges(data=True)]
+    visible_communities = sorted({graph.nodes[node].get("community_id", -1) for node in nodes})
+    community_color_map = {community: plt.get_cmap("tab10")(index % 10) for index, community in enumerate(visible_communities)}
+    node_colors = [community_color_map[graph.nodes[node].get("community_id", -1)] for node in nodes]
+    edge_ratios = np.array([data.get("negative_ratio", 0.0) for _, _, data in graph.edges(data=True)], dtype=float)
+    edge_widths = [0.5 + min(3.0, np.log1p(data.get("weight", 1.0)) / 2.0) for _, _, data in graph.edges(data=True)]
 
-    fig, ax = plt.subplots(figsize=(10, 8))
+    fig, ax = plt.subplots(figsize=(11.7, 8.2))
     if graph.number_of_edges():
-        nx.draw_networkx_edges(graph, pos, ax=ax, edge_color=edge_colors, width=edge_widths, alpha=0.25, arrows=False)
-    node_artist = nx.draw_networkx_nodes(
+        edge_artist = nx.draw_networkx_edges(
+            graph,
+            pos,
+            ax=ax,
+            edge_color=edge_ratios,
+            edge_cmap=plt.get_cmap("Reds"),
+            edge_vmin=0,
+            edge_vmax=max(0.25, float(np.nanquantile(edge_ratios, 0.9))),
+            width=edge_widths,
+            alpha=0.30,
+            arrows=False,
+        )
+        colorbar = fig.colorbar(edge_artist, ax=ax, fraction=0.035, pad=0.01)
+        colorbar.set_label("Edge negative-link ratio")
+        colorbar.ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    nx.draw_networkx_nodes(
         graph,
         pos,
         ax=ax,
         node_size=node_sizes,
         node_color=node_colors,
-        cmap=cmap,
-        alpha=0.9,
-        linewidths=0.2,
+        alpha=0.93,
+        linewidths=1.0,
         edgecolors="white",
     )
-    label_nodes = node_sample.sort_values("pagerank" if "pagerank" in node_sample.columns else "total_degree", ascending=False).head(label_count)["node"]
-    labels = {node: node for node in label_nodes if node in graph}
-    nx.draw_networkx_labels(graph, pos, labels=labels, ax=ax, font_size=7, font_color=PALETTE["text"])
-    colorbar = fig.colorbar(node_artist, ax=ax, fraction=0.035, pad=0.01)
-    colorbar.set_label("Detected community index")
-    ax.set_title(f"Community-colored subreddit network sample ({len(nodes)} nodes, {graph.number_of_edges()} edges)")
+    label_nodes = sorted(
+        nodes,
+        key=lambda node: (graph.nodes[node].get("pagerank", 0.0), graph.nodes[node].get("total_degree", 0.0)),
+        reverse=True,
+    )[:label_count]
+    labels = {node: node for node in label_nodes}
+    nx.draw_networkx_labels(
+        graph,
+        pos,
+        labels=labels,
+        ax=ax,
+        font_size=7.7,
+        font_color=PALETTE["text"],
+        bbox={"boxstyle": "round,pad=0.16", "facecolor": "white", "edgecolor": "none", "alpha": 0.78},
+    )
+    legend_communities = visible_communities[:8]
+    handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            color="w",
+            label=f"C{community} (n={community_sizes.get(community, 0):,})",
+            markerfacecolor=community_color_map[community],
+            markersize=8,
+        )
+        for community in legend_communities
+    ]
+    ax.legend(handles=handles, title="Detected community", loc="lower left", fontsize=8, title_fontsize=9)
+    ax.set_title(f"Negative-link backbone among major Reddit communities\n{graph.number_of_nodes()} subreddits, {graph.number_of_edges()} directed edges")
     ax.axis("off")
 
     return _finalize_figure(fig, _output_path(output_dir, "community_network_sample.png"), show=show)
@@ -456,23 +811,47 @@ def plot_community_pair_negative_heatmap(
     pivot = pivot.apply(pd.to_numeric, errors="coerce").astype(float)
     mask = pivot.isna()
     plot_data = pivot.fillna(0.0)
-    labels = [f"C{community}" for community in top_communities]
+    labels = _community_labels(node_features, top_communities)
+    vmax = max(0.12, float(pair_summary["negative_ratio"].quantile(0.90)) if not pair_summary.empty else 0.12)
 
-    fig, ax = plt.subplots(figsize=(9, 7))
+    fig, ax = plt.subplots(figsize=(10.8, 8.0))
     sns.heatmap(
         plot_data,
         mask=mask,
         cmap="Reds",
         vmin=0,
-        vmax=max(0.15, float(pair_summary["negative_ratio"].quantile(0.95)) if not pair_summary.empty else 0.15),
+        vmax=vmax,
         xticklabels=labels,
         yticklabels=labels,
         cbar_kws={"label": "Negative hyperlink ratio"},
+        linewidths=0.45,
+        linecolor="white",
         ax=ax,
     )
-    ax.set_title(f"Negative-link ratio between top {len(top_communities)} communities")
-    ax.set_xlabel("Target community")
-    ax.set_ylabel("Source community")
+    colorbar = ax.collections[0].colorbar
+    colorbar.ax.yaxis.set_major_formatter(PercentFormatter(1.0))
+    top_cells = pair_summary.sort_values("negative_ratio", ascending=False).head(7)
+    index_positions = {community: index for index, community in enumerate(top_communities)}
+    for row in top_cells.itertuples(index=False):
+        if row.source_community in index_positions and row.target_community in index_positions:
+            y = index_positions[row.source_community]
+            x = index_positions[row.target_community]
+            ax.text(x + 0.5, y + 0.5, f"{row.negative_ratio:.0%}", ha="center", va="center", fontsize=7.5, color="white", fontweight="bold")
+    ax.set_title(f"Negative-link ratio between top {len(top_communities)} communities", pad=16)
+    ax.text(
+        0.0,
+        1.015,
+        "Color scale is capped at the 90th percentile to keep lower-intensity structure visible.",
+        transform=ax.transAxes,
+        fontsize=8.4,
+        color="#5A5F66",
+        ha="left",
+        va="bottom",
+    )
+    ax.set_xlabel("Target community", labelpad=10)
+    ax.set_ylabel("Source community", labelpad=10)
+    ax.tick_params(axis="x", rotation=35, labelsize=8.2)
+    ax.tick_params(axis="y", rotation=0, labelsize=8.2)
 
     return _finalize_figure(fig, _output_path(output_dir, "community_pair_negative_heatmap.png"), show=show)
 

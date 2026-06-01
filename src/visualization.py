@@ -5,6 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 
 import matplotlib.dates as mdates
+import matplotlib
+
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch

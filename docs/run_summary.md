@@ -1,6 +1,6 @@
 # Latest Pipeline Run Summary
 
-Last verified run: 2026-05-17 using the repository `.venv` kernel after refactoring notebook figures to display inline before saving, adding community/network visualizations, and verifying XGBoost/LightGBM comparisons.
+Last verified run: 2026-05-31 using the bundled Python runtime after adding Kaggle/SNAP provenance, reproducibility scripts, robustness probes, threshold analysis, error analysis, and a real presentation deck.
 
 ## Data Preparation
 
@@ -51,6 +51,24 @@ Model families included in the verified run:
 
 The exported `phase3_model_metrics.csv` contains 41 rows across six feature sets.
 
+## Dataset Audit and Provenance
+
+The project uses the Kaggle mirror `Signed Graphs`, file family `soc-RedditHyperlinks`, with the original academic source documented as Stanford SNAP / Kumar et al. The reproducible audit script validates the raw files before modeling:
+
+```powershell
+python scripts/audit_dataset.py --raw-dir data/raw --json-out data/processed/dataset_audit.json
+```
+
+Latest audit results:
+
+| Raw File | Rows | Negative Links | Negative Ratio |
+| --- | ---: | ---: | ---: |
+| `soc-redditHyperlinks-body.tsv` | 286,561 | 21,070 | 0.0735 |
+| `soc-redditHyperlinks-title.tsv` | 571,927 | 61,140 | 0.1069 |
+| Combined | 858,488 | 82,210 | 0.0958 |
+
+The audit confirms required columns, valid labels in `{-1, 1}`, parseable timestamps, and exactly 86 `PROPERTIES` values per row.
+
 ## Interpretation for the Report
 
 - The best model is a hybrid Logistic Regression model, indicating that text-property features add some useful signal when combined with temporal graph/history features.
@@ -58,6 +76,16 @@ The exported `phase3_model_metrics.csv` contains 41 rows across six feature sets
 - Text-only is better than dummy baselines but weaker than graph/history features.
 - The result supports the project thesis: signed temporal network features are useful for predicting future negative-dominant cross-community relationships.
 - Structural-balance features are useful for interpretability, but the ablation indicates that their predictive contribution is small in the strict temporal setting.
+
+## Robustness and Explainability Additions
+
+The grade-maximization pass adds three reproducible analysis artifacts:
+
+- `robustness_metrics.csv`: sampled k-core sensitivity probe for `k=3`, `k=5`, and `k=10`, including a history-safe cohort setting.
+- `error_analysis_cases.csv`: local contribution examples for true positives, false positives, and false negatives.
+- `threshold_tradeoff.csv` and `threshold_tradeoff.png`: precision/recall/F1 tradeoff for the best hybrid logistic model.
+
+The sampled robustness probe shows that PR-AUC stays above the dummy prevalence baseline under all tested k-core settings, supporting the conclusion that the result is not a one-off artifact of `k=5`.
 
 ## Generated Artifacts
 
@@ -73,6 +101,8 @@ The exported `phase3_model_metrics.csv` contains 41 rows across six feature sets
 - `data/processed/phase3/phase3_model_metrics.csv`
 - `data/processed/phase3/phase3_feature_importance.csv`
 - `data/processed/phase3/phase3_prediction_scores.csv`
+- `data/processed/phase3/error_analysis_cases.csv`
+- `data/processed/phase3/robustness_metrics.csv`
 - `reports/figures/label_distribution.png`
 - `reports/figures/monthly_negative_ratio.png`
 - `reports/figures/top_negative_sources.png`
@@ -86,3 +116,6 @@ The exported `phase3_model_metrics.csv` contains 41 rows across six feature sets
 - `reports/figures/roc_curve.png`
 - `reports/figures/best_confusion_matrix.png`
 - `reports/figures/feature_importance_top20.png`
+- `reports/figures/threshold_tradeoff.png`
+- `reports/figures/robustness_kcore_pr_auc.png`
+- `docs/final_presentation.pptx`

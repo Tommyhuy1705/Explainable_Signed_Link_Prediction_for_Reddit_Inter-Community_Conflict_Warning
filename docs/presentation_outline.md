@@ -12,7 +12,8 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 
 ## Slide 3: Dataset
 
-- Stanford SNAP Reddit Hyperlink Network.
+- Kaggle `Signed Graphs` mirror, file family `soc-RedditHyperlinks`.
+- Original academic source: Stanford SNAP Reddit Hyperlink Network / Kumar et al.
 - 858,488 hyperlink records.
 - 67,180 unique subreddits in the raw combined data.
 - Time span: 2013-12-31 to 2017-04-30.
@@ -66,12 +67,12 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 | graph_only | Historical negative ratio | 0.1237 | 0.6328 | 0.2327 |
 | hybrid | Dummy prior | 0.0698 | 0.5000 | 0.1304 |
 
-## Slide 10: Interpretation
+## Slide 10: Robustness and Error Analysis
 
 - The best model combines graph/history and text-property features.
-- Graph-only models are close to hybrid, so network structure is a strong signal.
-- Text-only models are weaker, but text properties help inside the hybrid model.
-- Structural balance is useful for explanation, but its predictive gain is small.
+- K-core sensitivity checks at `k=3`, `k=5`, and `k=10` keep PR-AUC above the dummy prevalence baseline.
+- Threshold analysis shows how precision, recall, and F1 trade off.
+- Local contribution cases explain true positives, false positives, and false negatives.
 
 ## Slide 11: Limitations and Future Work
 
@@ -83,3 +84,7 @@ Predicting Negative Cross-Community Hyperlinks on Reddit Using Temporal Signed N
 ## Slide 12: Closing Message
 
 Temporal signed-network features provide practical signals for predicting future negative-dominant relationships between Reddit communities.
+
+## Deck Artifact
+
+The final deck is generated at `docs/final_presentation.pptx` by `scripts/create_presentation.py` and uses figures from `reports/figures/`.

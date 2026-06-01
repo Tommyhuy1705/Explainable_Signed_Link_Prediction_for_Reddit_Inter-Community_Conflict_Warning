@@ -2,12 +2,18 @@
 
 ## Source
 
-The project uses the Stanford SNAP Reddit Hyperlink Network:
+The project uses the Reddit Hyperlink Network from the Kaggle `Signed Graphs`
+mirror, with the original academic source preserved as Stanford SNAP/Kumar et
+al.:
 
 - `soc-redditHyperlinks-body.tsv`
 - `soc-redditHyperlinks-title.tsv`
 
-Source URL: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
+Course-access source URL: <https://www.kaggle.com/datasets/wolfram77/graphs-signed>
+
+Original source URL: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
+
+Detailed provenance and audit notes are maintained in `docs/data_provenance.md`.
 
 ## Raw Schema
 

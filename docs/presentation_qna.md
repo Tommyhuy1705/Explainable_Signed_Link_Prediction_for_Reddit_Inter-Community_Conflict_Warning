@@ -14,7 +14,7 @@ For each split, graph and text-history features are computed only from interacti
 
 ## 4. Why use k-core filtering?
 
-The full graph is very sparse. K-core filtering keeps a denser subgraph where network features such as PageRank, reciprocity, and structural-balance counts are more meaningful. This is a practical course-project choice and is stated as a limitation.
+The full graph is very sparse. K-core filtering keeps a denser subgraph where network features such as PageRank, reciprocity, and structural-balance counts are more meaningful. This is a tractability/filtering choice, not a future-aware model feature. We also added sensitivity checks for `k=3`, `k=5`, and `k=10`, including a history-safe cohort probe.
 
 ## 5. What does `LINK_SENTIMENT = -1` mean?
 
@@ -41,3 +41,11 @@ A negative hyperlink is only one signal of negative inter-community interaction.
 ## 10. How can this become a publishable paper?
 
 Extend the project from pair-level prediction to explainable temporal signed link prediction, add stronger signed/temporal graph models, evaluate robustness to label noise, and compare on more datasets or newer social platforms.
+
+## 11. Why mention both Kaggle and SNAP?
+
+The course requires a reputable Kaggle dataset, so the reproducible download path uses Kaggle's `Signed Graphs` mirror. The scholarly provenance is still important because the Reddit Hyperlink Network was originally released through Stanford SNAP and Kumar et al., so both sources are documented.
+
+## 12. Why is PR-AUC around 0.184 meaningful?
+
+The test prevalence of negative-dominant pairs is about 0.07, so a dummy prior has PR-AUC close to 0.07. The best hybrid model reaches 0.1840 PR-AUC, which is more than twice that prevalence-level baseline while using a strict temporal split.

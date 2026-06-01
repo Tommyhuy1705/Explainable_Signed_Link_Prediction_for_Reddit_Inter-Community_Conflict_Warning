@@ -19,12 +19,14 @@ The course-project scope is **negative hyperlink prediction**. The longer-term r
 
 ## Dataset
 
-The project uses the Stanford SNAP Reddit Hyperlink Network:
+The project uses the Reddit Hyperlink Network from the Kaggle `Signed Graphs` mirror, with Stanford SNAP/Kumar et al. cited as the original academic source:
 
 - `soc-redditHyperlinks-body.tsv`
 - `soc-redditHyperlinks-title.tsv`
 
-Source: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
+Course-access source: <https://www.kaggle.com/datasets/wolfram77/graphs-signed>
+
+Original source: <https://snap.stanford.edu/data/soc-RedditHyperlinks.html>
 
 The raw files should be placed in `data/raw/`. They are not committed because of size.
 
@@ -38,6 +40,12 @@ Expected raw schema:
 - `PROPERTIES`
 
 The `PROPERTIES` column contains 86 numeric text-property features. The pipeline parses these into `text_property_00` to `text_property_85` for text-only and hybrid ablation experiments.
+
+The reproducible dataset audit is documented in `docs/data_provenance.md` and can be rerun with:
+
+```bash
+python scripts/audit_dataset.py --raw-dir data/raw --json-out data/processed/dataset_audit.json
+```
 
 ## Methodology
 
@@ -78,6 +86,9 @@ The implemented workflow has four phases:
    - Precision-recall and ROC curves.
    - Confusion matrix.
    - Feature importance.
+   - Threshold trade-off.
+   - Sampled k-core robustness probe.
+   - Representative true-positive, false-positive, and false-negative cases.
 
 ## Evaluation Metrics
 
@@ -93,7 +104,7 @@ Because negative links are a minority class, accuracy is not the main metric. Th
 
 ## Latest Verified Result
 
-The latest verified `.venv` run is summarized in `docs/run_summary.md`. The exported metrics include 41 model/feature-set rows across Logistic Regression, Random Forest, XGBoost, LightGBM, dummy baselines, and a historical negative-ratio heuristic.
+The latest verified run is summarized in `docs/run_summary.md`. The exported metrics include 41 model/feature-set rows across Logistic Regression, Random Forest, XGBoost, LightGBM, dummy baselines, and a historical negative-ratio heuristic.
 
 Best test result by PR-AUC:
 
@@ -101,9 +112,17 @@ Best test result by PR-AUC:
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | hybrid | Logistic Regression | 0.1840 | 0.7569 | 0.2700 | 0.2050 | 0.3954 |
 
+Additional report-hardening artifacts:
+
+- `data/processed/phase3/robustness_metrics.csv`
+- `data/processed/phase3/error_analysis_cases.csv`
+- `reports/figures/robustness_kcore_pr_auc.png`
+- `reports/figures/threshold_tradeoff.png`
+- `docs/final_presentation.pptx`
+
 ## Installation
 
-Verified local environment: the repository `.venv` currently runs with Python 3.14 and the dependencies in `requirements.txt` installed. If recreating the environment from scratch on another machine, Python 3.11 or 3.12 is still a conservative choice because ML library wheels are usually most stable there.
+Recommended environment: Python 3.11 or 3.12. The original local run used a Python 3.14 `.venv`, but Python 3.11/3.12 is more portable for ML wheels.
 
 ```bash
 python -m venv .venv
@@ -113,7 +132,19 @@ pip install -r requirements.txt
 
 ## How to Run
 
-Run the notebooks in order:
+Option A: run the reproducible scripts:
+
+```bash
+python scripts/audit_dataset.py --raw-dir data/raw --json-out data/processed/dataset_audit.json
+python scripts/run_pipeline.py --stage smoke
+python scripts/run_pipeline.py --stage all --k-core 5
+python scripts/create_presentation.py
+python -m pytest
+```
+
+The `smoke` stage is the fast correctness check. The full `all` stage rebuilds graph features, trains the optional XGBoost/LightGBM models, regenerates figures, and can take roughly 45-60 minutes on a laptop-scale CPU runtime.
+
+Option B: run the notebooks in order:
 
 1. `notebooks/01_data_exploration.ipynb`
 2. `notebooks/02_network_construction.ipynb`
@@ -125,11 +156,14 @@ The main reusable code is in `src/`:
 - `phase1.py`: loading, cleaning, filtering, splitting.
 - `phase2.py`: graph construction and feature engineering.
 - `phase3.py`: temporal split, baselines, models, threshold tuning, evaluation.
+- `reporting_artifacts.py`: threshold, robustness, and error-analysis artifacts.
 - `visualization.py`: report-ready figures.
 
 Supporting folders:
 
 - `reports/`: saved figures and report-facing outputs.
+- `docs/final_report.md`: full paper-style report.
+- `docs/final_presentation.pptx`: final slide deck.
 - `models/`: optional trained-model artifacts for later inference extensions.
 
 ## Important Limitations

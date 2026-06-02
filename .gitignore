@@ -16,7 +16,6 @@ env/
 /data/interim/*
 /data/processed/*
 /models/*
-/reports/figures/*
 
 # Keep folder structure
 !/data/raw/.gitkeep

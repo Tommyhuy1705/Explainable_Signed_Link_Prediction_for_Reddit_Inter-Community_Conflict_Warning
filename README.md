@@ -130,6 +130,15 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+If you are using the local Python 3.13 installation on this machine, recreate
+the environment with:
+
+```powershell
+& "C:\Users\USER\AppData\Local\Programs\Python\Python313\python.exe" -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\pip.exe install -r requirements.txt
+```
+
 ## How to Run
 
 Option A: run the reproducible scripts:
@@ -150,6 +159,17 @@ Option B: run the notebooks in order:
 2. `notebooks/02_network_construction.ipynb`
 3. `notebooks/03_feature_engineering.ipynb`
 4. `notebooks/04_modeling_and_evaluation.ipynb`
+
+Option C: run the offline Streamlit dashboard demo:
+
+```powershell
+.\.venv\Scripts\pip.exe install -r requirements-app.txt
+.\.venv\Scripts\streamlit.exe run app\app.py
+```
+
+The dashboard opens at <http://localhost:8501>. It reads the exported CSV/PNG
+artifacts and does not retrain models, so it is suitable for classroom
+presentation. See `app/README.md` for the demo flow.
 
 The main reusable code is in `src/`:
 

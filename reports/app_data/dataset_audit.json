@@ -1,0 +1,42 @@
+{
+  "raw_dir": "data\\raw",
+  "kaggle_dataset": "https://www.kaggle.com/datasets/wolfram77/graphs-signed",
+  "original_source": "https://snap.stanford.edu/data/soc-RedditHyperlinks.html",
+  "files": [
+    {
+      "dataset_source": "body",
+      "file": "data\\raw\\soc-redditHyperlinks-body.tsv",
+      "rows": 286561,
+      "negative_rows": 21070,
+      "negative_ratio": 0.07352710243194294,
+      "missing_columns": [],
+      "missing_core_fields": 0,
+      "invalid_labels": 0,
+      "invalid_timestamps": 0,
+      "malformed_properties": 0,
+      "timestamp_min": "2013-12-31 16:39:58",
+      "timestamp_max": "2017-04-30 16:58:21"
+    },
+    {
+      "dataset_source": "title",
+      "file": "data\\raw\\soc-redditHyperlinks-title.tsv",
+      "rows": 571927,
+      "negative_rows": 61140,
+      "negative_ratio": 0.10690175494424987,
+      "missing_columns": [],
+      "missing_core_fields": 0,
+      "invalid_labels": 0,
+      "invalid_timestamps": 0,
+      "malformed_properties": 0,
+      "timestamp_min": "2013-12-31 16:20:20",
+      "timestamp_max": "2017-04-30 16:47:50"
+    }
+  ],
+  "combined": {
+    "rows": 858488,
+    "negative_rows": 82210,
+    "negative_ratio": 0.09576138513293139,
+    "timestamp_min": "2013-12-31 16:20:20",
+    "timestamp_max": "2017-04-30 16:58:21"
+  }
+}

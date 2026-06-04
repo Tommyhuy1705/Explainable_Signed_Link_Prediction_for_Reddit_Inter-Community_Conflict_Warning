@@ -390,6 +390,30 @@ def metrics_at_threshold(scores: pd.DataFrame, threshold: float) -> dict[str, fl
     }
 
 
+def metrics_from_threshold_scan(tradeoff: pd.DataFrame, threshold: float) -> dict[str, float | int]:
+    """Select the nearest precomputed threshold row."""
+    if tradeoff.empty:
+        return {
+            "precision": 0.0,
+            "recall": 0.0,
+            "f1": 0.0,
+            "tp": 0,
+            "fp": 0,
+            "fn": 0,
+            "tn": 0,
+        }
+    row = tradeoff.iloc[(tradeoff["threshold"].astype(float) - threshold).abs().argsort().iloc[0]]
+    return {
+        "precision": float(row.get("precision", 0.0)),
+        "recall": float(row.get("recall", 0.0)),
+        "f1": float(row.get("f1", 0.0)),
+        "tp": int(row.get("tp", 0)),
+        "fp": int(row.get("fp", 0)),
+        "fn": int(row.get("fn", 0)),
+        "tn": int(row.get("tn", 0)),
+    }
+
+
 def threshold_curve(tradeoff: pd.DataFrame, selected_threshold: float) -> go.Figure:
     """Build the threshold trade-off chart."""
     if tradeoff.empty:

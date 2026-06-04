@@ -1,0 +1,13 @@
+{
+  "row_counts": {
+    "data/processed/phase1/phase1_kcore_filtered.csv": 708425,
+    "data/processed/phase2/phase2_node_features.csv": 12968,
+    "data/processed/phase2/phase2_modeling_table.csv": 249441,
+    "data/processed/phase2/phase2_edge_features.csv": 249441
+  },
+  "best_model": {
+    "feature_set": "hybrid",
+    "model": "logistic_regression",
+    "test_pr_auc": 0.1839665738888259
+  }
+}

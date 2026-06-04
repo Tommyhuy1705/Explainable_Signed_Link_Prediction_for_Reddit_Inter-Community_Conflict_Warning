@@ -575,19 +575,23 @@ def threshold_simulator(metrics: pd.DataFrame) -> None:
         '<div class="evidence-note">Threshold tuning shows the operational trade-off: lower thresholds catch more risky pairs, while higher thresholds reduce false alarms.</div>',
         unsafe_allow_html=True,
     )
-    with st.spinner("Loading best-model test scores..."):
+    with st.spinner("Loading threshold metrics..."):
         scores = data_access.load_prediction_scores(
             feature_set=str(best["feature_set"]),
             model=str(best["model"]),
             split="test",
         )
-    if scores.empty:
-        st.warning("Prediction-score artifact is missing or the best-model score slice was not found.")
+    tradeoff = charts.threshold_scan(scores) if not scores.empty else data_access.load_threshold_scan()
+    if tradeoff.empty:
+        st.warning("Threshold artifact is missing.")
         return
 
     threshold = st.slider("Decision threshold", 0.01, 0.99, default_threshold, 0.01)
-    selected_metrics = charts.metrics_at_threshold(scores, threshold)
-    tradeoff = charts.threshold_scan(scores)
+    selected_metrics = (
+        charts.metrics_at_threshold(scores, threshold)
+        if not scores.empty
+        else charts.metrics_from_threshold_scan(tradeoff, threshold)
+    )
 
     cards = st.columns(7)
     with cards[0]:
